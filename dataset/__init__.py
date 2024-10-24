@@ -26,6 +26,7 @@ class BaseDataset(BaseDirectory):
 
         elif dataset_df is not None:
             self.dataset_df=dataset_df
+        
 
     
     def spawn(self):
@@ -41,8 +42,10 @@ class BaseDataset(BaseDirectory):
         self.dataset_df.to_pickle(f"{self.path}/dataset_df.pkl")
         set_config(self.get_config)
 
+        logging.info(f"{self.name.upper()} spawned at {self.path}")
+
     
-    def arrange_sample(sample, tokenizer):
+    def arrange_sample(self, sample, tokenizer):
 
         if isinstance(sample.get('prompt_messages'),list) and isinstance(sample.get('gold_message'),list):
             all_messages=sample['prompt_messages']+sample['gold_message']
@@ -92,9 +95,9 @@ class BaseDataset(BaseDirectory):
         return {**inputs}
         #return {'text':input_text,**inputs}
 
-    def arrange(self):
+    def arrange(self, tokenizer):
 
-        logging.info("start")
+        self.logger.info(f"{self.name.upper()} START")
 
         for required_col in ['prompt','gold_completion','prompt_messages','gold_message']:
             if required_col not in self.dataset_df.columns:
@@ -103,19 +106,18 @@ class BaseDataset(BaseDirectory):
         train_ds,eval_ds,test_ds=None,None,None
 
         if 'train' in self.dataset_df['split'].values:
-            train_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='train'].apply(self.arrange_sample,axis=1).to_list())
+            train_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='train'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
 
         if 'eval' in self.dataset_df['split'].values:
-            eval_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='eval'].apply(self.arrange_sample,axis=1).to_list())
+            eval_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='eval'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
             #test_ds=Dataset.from_list(dataset_df[dataset_df.split=='eval'].apply(arrange_sample,axis=1).to_list()[:2])
 
         if 'test' in self.dataset_df['split'].values:
-            test_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='test'].apply(self.arrange_sample,axis=1).to_list())
+            test_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='test'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
         
-
-        if train_ds: logging.info(f'train_ds: {len(train_ds)} samples')
-        if eval_ds: logging.info(f'eval_ds: {len(eval_ds)} samples')
-        if test_ds: logging.info(f'test_ds: {len(test_ds)} samples')
+        if train_ds: self.logger.info(f'train_ds: {len(train_ds)} samples')
+        if eval_ds: self.logger.info(f'eval_ds: {len(eval_ds)} samples')
+        if test_ds: self.logger.info(f'test_ds: {len(test_ds)} samples')
 
         return train_ds,eval_ds,test_ds
 

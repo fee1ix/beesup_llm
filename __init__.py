@@ -3,6 +3,7 @@ import os
 from .toolkit import *
 from .toolkit.setup_utils import *
 
+import logging
 from typing import Optional
 
 import pytz
@@ -64,10 +65,8 @@ Total size of files: {total_size_mb:.2f} MB
         """.strip()
 
 
-
 base_directory_config=dict(
     type = 'directory',
-    sub_directories = []
 )
 
 class BaseDirectory(object):
@@ -76,6 +75,8 @@ class BaseDirectory(object):
     """
 
     def __init__(self, config=base_directory_config, parent_lab: Optional[Lab]=None):
+
+        
 
         config=load_dict(config)
         for k, v in config.items(): 
@@ -107,9 +108,10 @@ class BaseDirectory(object):
         if not hasattr(self, 'datetime_init'):
             #self.timestamp_init=datetime.datetime.now(TIMEZONE).strftime('%Y-%m-%d_%H-%M')
             self.datetime_init=datetime.datetime.now(TIMEZONE)
-            
-
         
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"{self.name.upper()} initialised")
+ 
     
     def get_parent_lab(self):
         self.parent_lab = Lab()
