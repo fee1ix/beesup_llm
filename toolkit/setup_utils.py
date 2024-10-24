@@ -15,7 +15,8 @@ def load_dict(input):
 
     elif isinstance(input, str) and input.endswith('.yaml'): return load_yaml(input)
 
-    else: raise ValueError("Input must be a dictionary or a string path.")
+    else: return None
+        #raise ValueError("Input must be a dictionary or a string path.")
 
 
 def get_ids(parent_path=None, type='', from_id=0, to_id=10e9):
