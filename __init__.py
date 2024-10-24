@@ -5,6 +5,10 @@ from .toolkit.setup_utils import *
 
 from typing import Optional
 
+import pytz
+import datetime
+TIMEZONE = pytz.timezone('Europe/Berlin')
+
 class Lab(object):
 
     def __init__(self, path=None):
@@ -61,8 +65,6 @@ Total size of files: {total_size_mb:.2f} MB
 
 
 
-
-
 base_directory_config=dict(
     type = 'directory',
     sub_directories = []
@@ -100,24 +102,42 @@ class BaseDirectory(object):
             self.get_id()
             self.name=f"{str(self.id).zfill(4)}_{self.type}"
             self.path=f"{self.parent_dir_path}/{self.name}"
+
+        
+        if not hasattr(self, 'datetime_init'):
+            #self.timestamp_init=datetime.datetime.now(TIMEZONE).strftime('%Y-%m-%d_%H-%M')
+            self.datetime_init=datetime.datetime.now(TIMEZONE)
+            
+
         
     
     def get_parent_lab(self):
         self.parent_lab = Lab()
         self.parent_lab_path = self.parent_lab.path
 
+        return self.parent_lab
+
     def get_id(self):
 
-        id_list = get_ids(self.parent_dir_path)
+        if not hasattr(self, 'id'):
 
-        if id_list:
-            max_id = max(id_list)
-            self.id = max_id + 1
-
-        else:
-            self.id = 1
+            id_list = get_ids(self.parent_dir_path)
+            if id_list: max_id = max(id_list); self.id = max_id + 1
+            else: self.id = 1
 
         return self.id
+
+
+    def get_config(self):
+
+        key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+        keys_to_exclude=['parent_lab']
+
+        config = {k: getattr(self, k) for k in key_order if hasattr(self, k)}
+        config.update({k: v for k, v in self.__dict__.items() if (k not in key_order) and (k not in keys_to_exclude)})
+
+        return config
+
 
     def build(self):
 

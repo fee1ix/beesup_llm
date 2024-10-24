@@ -27,3 +27,8 @@ def get_ids(parent_path=None, type='', from_id=0, to_id=10e9):
     ids=[id for id in ids if (id >=from_id) and (id <=to_id)]
 
     return ids
+
+
+def set_config(config):
+    with open(f'{config["path"]}/config.yaml', 'w') as file:
+        yaml.dump(config, file, sort_keys=False, default_flow_style=False)
