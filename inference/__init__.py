@@ -1,8 +1,6 @@
 from beesup_llm import *
 from ..toolkit.setup_utils import *
 
-from ..dataset import BaseDataset
-
 import logging
 
 class BaseTest(BaseDirectory):

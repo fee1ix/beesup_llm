@@ -26,7 +26,8 @@ class BaseModelWrap(BaseDirectory):
             bnb_4bit_quant_type='nf4',
             )
         if hasattr(self,'bnb_config'):
-            self.bnb_config=bnb_config.update(self.bnb_config)
+            bnb_config.update(self.bnb_config)
+            self.bnb_config=bnb_config
         else:  self.bnb_config=bnb_config
 
         inference_tokenizer_config=dict(
@@ -34,8 +35,9 @@ class BaseModelWrap(BaseDirectory):
             padding='longest',
             add_special_tokens=True,
         )
-        if hasattr(self,'inference_tokenizer_config'): 
-            self.inference_tokenizer_config=inference_tokenizer_config.update(self.inference_tokenizer_config)
+        if hasattr(self,'inference_tokenizer_config'):
+            inference_tokenizer_config.update(self.inference_tokenizer_config)
+            self.inference_tokenizer_config=inference_tokenizer_config
         else:  self.inference_tokenizer_config=inference_tokenizer_config
         
         training_tokenizer_config=dict(
@@ -44,7 +46,8 @@ class BaseModelWrap(BaseDirectory):
             add_special_tokens=True,
             )
         if hasattr(self,'training_tokenizer_config'):
-            self.training_tokenizer_config=training_tokenizer_config.update(self.training_tokenizer_config)
+            training_tokenizer_config.update(self.training_tokenizer_config)
+            self.training_tokenizer_config=training_tokenizer_config
         else:  self.training_tokenizer_config=training_tokenizer_config
 
         generation_config=dict(
@@ -57,7 +60,8 @@ class BaseModelWrap(BaseDirectory):
         )
 
         if hasattr(self,'generation_config'):
-            self.generation_config=generation_config.update(self.generation_config)
+            generation_config.update(self.generation_config)
+            self.generation_config=generation_config
         else:  self.generation_config=generation_config
 
     def load_model(self):
@@ -94,6 +98,9 @@ class BaseModelWrap(BaseDirectory):
 
     def spawn(self):
 
+        if not os.path.exists(f'{self.path}'):
+            os.makedirs(f'{self.path}', exist_ok=False)
+
         set_config(self.get_config())
         logging.info(f"{self.name.upper()} spawned at {self.path}")
 
@@ -113,8 +120,9 @@ class LlamaModelWrap(BaseModelWrap):
             pad_token='<|begin_of_text|>',
             pad_token_id=128000
         )
-        if hasattr(self,'inference_tokenizer_config'): 
-            self.inference_tokenizer_config=inference_tokenizer_config.update(self.inference_tokenizer_config)
+        if hasattr(self,'inference_tokenizer_config'):
+            inference_tokenizer_config.update(self.inference_tokenizer_config)
+            self.inference_tokenizer_config=inference_tokenizer_config
         else:  self.inference_tokenizer_config=inference_tokenizer_config
         
         training_tokenizer_config=dict(
@@ -123,7 +131,8 @@ class LlamaModelWrap(BaseModelWrap):
             pad_token_id=128001
             )
         if hasattr(self,'training_tokenizer_config'):
-            self.training_tokenizer_config=training_tokenizer_config.update(self.training_tokenizer_config)
+            training_tokenizer_config.update(self.training_tokenizer_config)
+            self.training_tokenizer_config=training_tokenizer_config
         else:  self.training_tokenizer_config=training_tokenizer_config
 
         generation_config=dict(
@@ -131,7 +140,8 @@ class LlamaModelWrap(BaseModelWrap):
             pad_token_id=128000,
         )
         if hasattr(self,'generation_config'):
-            self.generation_config=generation_config.update(self.generation_config)
+            generation_config.update(self.generation_config)
+            self.generation_config=generation_config
         else:  self.generation_config=generation_config
 
     
