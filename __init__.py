@@ -141,6 +141,7 @@ class BaseDirectory(object):
         config.update({k: v for k, v in self.__dict__.items() if 
                        (k not in self._config_keys_to_exclude) and
                        (not k.startswith('_')) and
+                       #(isinstance(k,(str,int,float,dict,list,tuple))) and
                        (k not in self._config_key_order)})
 
         return config
