@@ -1,0 +1,66 @@
+\lstdefinestyle{pseudocode}{
+    basicstyle=\ttfamily\small, % Use monospaced font for code
+    columns=fullflexible,
+    mathescape=true, % Allows escaping to LaTeX math mode within $
+    keepspaces=true,
+    numbers=left, % Line numbers on the left
+    numberstyle=\tiny\color{gray}, % Line numbers styling
+    stepnumber=1, % Line number step
+    numbersep=5pt, % How far the line numbers are from the code
+    backgroundcolor=\color{white}, % Background color for the code block
+    showspaces=false, % Don't show space characters
+    showstringspaces=false, % Don't show spaces in strings
+    showtabs=false, % Don't show tabs
+    frame=single, % Adds a frame around the code
+    tabsize=2, % Sets default tabsize to 2 spaces
+    captionpos=b, % Sets the caption-position to bottom
+    breaklines=true, % Set automatic line breaking
+    breakatwhitespace=false, % Sets if automatic breaks should only happen at whitespace
+    escapeinside={(*@}{@*)}, % if you want to add LaTeX within your code
+    morecomment=[l]{//}, % Comment style
+    commentstyle=\color{gray}\ttfamily,
+    xleftmargin=\parindent,
+    keywordstyle=\bfseries % Bold keywords
+}
+
+
+\begin{figure}[ht]
+    \centering
+    \begin{lstlisting}[style=pseudocode]
+    # Step 1: Parse predicted and gold JSON strings
+    pred_json = parse_json(pred_json_string)
+    gold_json = parse_json(gold_json_string)
+    
+    # Step 2: Compare observations with matching scientific names
+    for pred_obs in pred_json:
+        for gold_obs in gold_json:
+            if pred_obs['scientific_name'] == gold_obs['scientific_name']:
+                attribute_scores = []
+    
+                # Step 3: Compare attributes between the matched observations
+                for attr in all_attributes:
+                    if attr in pred_obs and attr in gold_obs:
+                        score = fuzzy_ratio(pred_obs[attr], gold_obs[attr])
+                    else:
+                        score = 0  # Attribute is missing or hallucinated
+                    attribute_scores.append(score)
+    
+                # Step 4: Calculate mean similarity for this pair
+                sim_score = mean(attribute_scores)
+                observation_pairs.append((pred_obs, gold_obs, sim_score))
+    
+    # Step 5: Sort pairs by similarity score
+    observation_pairs.sort(key=lambda x: x[2], reverse=True)
+    
+    # Step 6: Map the highest similarity pairs (ensure uniqueness)
+    used_pred, used_gold = set(), set()
+    tp_pairs = []
+    for pred_obs, gold_obs, _ in observation_pairs:
+        if pred_obs not in used_pred and gold_obs not in used_gold:
+            tp_pairs.append((pred_obs, gold_obs))
+            used_pred.add(pred_obs)
+            used_gold.add(gold_obs)
+    \end{lstlisting}
+    \caption{Pseudocode for Observation-Mapping Algorithm}
+    \label{fig:mapping_pseudocode}
+\end{figure}
