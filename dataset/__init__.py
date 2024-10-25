@@ -2,36 +2,33 @@
 from beesup_llm import *
 from ..toolkit.setup_utils import *
 
-import pandas as pd
 from datasets import Dataset
+import pandas as pd
 import logging
-
 
 
 class BaseDataset(BaseDirectory):
 
-    def __init__(self, config=None, parent_lab=None, dataset_df=None):
+    def __init__(self, ref=None, dataset_df=None):
 
-        if config is None: #load default config from repository
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            config = os.path.join(current_dir, 'base_dataset_config.yaml')
-        
-        super().__init__(config, parent_lab)
+        self.type='dataset'
+        super().__init__(ref)
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend(['dataset_df'])
 
         if os.path.exists(f'{self.path}/dataset_df.pkl'):
             self.dataset_df=pd.read_pickle(f'{self.path}/dataset_df.pkl')
-
             if dataset_df is not None: raise ValueError("dataset_df already exists")
-
 
         elif dataset_df is not None:
             self.dataset_df=dataset_df
         
-
-    
     def spawn(self):
         assert hasattr(self, 'dataset_df'), "Dataset must be assigned before spawning"
         assert isinstance(self.dataset_df, pd.DataFrame), "Dataset must be a pandas DataFrame."
+
+        if not os.path.exists(f'{self.path}'):
+            os.makedirs(f'{self.path}', exist_ok=False)
 
         required_cols=['prompt','gold_completion','prompt_messages','gold_message']
 
@@ -40,11 +37,10 @@ class BaseDataset(BaseDirectory):
                 self.dataset_df[required_col]=None
 
         self.dataset_df.to_pickle(f"{self.path}/dataset_df.pkl")
-        set_config(self.get_config)
+        set_config(self.get_config())
 
         logging.info(f"{self.name.upper()} spawned at {self.path}")
-
-    
+  
     def arrange_sample(self, sample, tokenizer):
 
         if isinstance(sample.get('prompt_messages'),list) and isinstance(sample.get('gold_message'),list):
@@ -96,6 +92,12 @@ class BaseDataset(BaseDirectory):
         #return {'text':input_text,**inputs}
 
     def arrange(self, tokenizer):
+
+        
+
+        if not hasattr(tokenizer, 'apply_chat_template'):
+            raise AttributeError("The tokenizer does not have the method 'apply_chat_template'")
+
 
         self.logger.info(f"{self.name.upper()} START")
 

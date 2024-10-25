@@ -65,86 +65,85 @@ Total size of files: {total_size_mb:.2f} MB
         """.strip()
 
 
-base_directory_config=dict(
-    type = 'directory',
-)
 
 class BaseDirectory(object):
     """
     Base class for subdirectories inside a lab
     """
 
-    def __init__(self, config=base_directory_config, parent_lab: Optional[Lab]=None):
+    def __init__(self, ref=None):
 
-        
+        self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+        self._config_keys_to_exclude=['logger']
 
-        config=load_dict(config)
-        for k, v in config.items(): 
-            if v is not None:
-                setattr(self, k, v)
+        if not hasattr(self, 'type'): self.type = 'directory'
 
-        
-        if (not hasattr(self, 'parent_lab_path')) and (parent_lab is None):
-            self.get_parent_lab()
-        
-        elif parent_lab:
-            self.parent_lab_path=parent_lab.path
+        if isinstance(ref, int): self.__init__from_id(ref)
+
+        elif isinstance(ref, str): self.__init__from_path(ref)
+
+        elif isinstance(ref, dict): self.__init__from_config(ref)
+
+        else: #initialize a new instance
     
-        # gather the most essential initialisation attributes
-        if not hasattr(self, 'type'): 
-            raise ValueError("missing type key")
-        
-        else:
+            self.parent_lab_path=extract_lab_path(os.getcwd())
             self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
+
             if not os.path.exists(f'{self.parent_dir_path}'):
                 os.makedirs(f'{self.parent_dir_path}', exist_ok=False)
-        
-        if not hasattr(self, 'id'):
-            self.get_id()
+
+            self.id=self.get_max_id()+1
             self.name=f"{str(self.id).zfill(4)}_{self.type}"
             self.path=f"{self.parent_dir_path}/{self.name}"
 
-        
-        if not hasattr(self, 'datetime_init'):
-            #self.timestamp_init=datetime.datetime.now(TIMEZONE).strftime('%Y-%m-%d_%H-%M')
             self.datetime_init=datetime.datetime.now(TIMEZONE)
-        
+
+
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"{self.name.upper()} initialised")
- 
     
-    def get_parent_lab(self):
-        self.parent_lab = Lab()
-        self.parent_lab_path = self.parent_lab.path
+    def __init__from_config(self,config):
+        for k, v in config.items(): 
+            if (v is not None) and (not hasattr(self, k)):
+                setattr(self, k, v)
 
-        return self.parent_lab
+    def __init__from_id(self,id):
+        assert hasattr(self, 'type'), "missing type key"
 
-    def get_id(self):
+        self.parent_lab_path=extract_lab_path(os.getcwd())
+        self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
+        
+        assert os.path.exists(f'{self.parent_dir_path}'), f"parent directory {self.parent_dir_path} does not exist"
 
-        if not hasattr(self, 'id'):
+        config = load_dict(f"{self.parent_dir_path}/{str(id).zfill(4)}_{self.type}/config.yaml")
+        self.__init__from_config(config)
 
-            id_list = get_ids(self.parent_dir_path)
-            if id_list: max_id = max(id_list); self.id = max_id + 1
-            else: self.id = 1
+    def __init__from_path(self,path):
+        assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
+        config=load_dict(path)
 
-        return self.id
+        self.__init__from_config(config)
 
+
+    def get_max_id(self):
+        assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
+
+        max_id=0
+
+        id_list = get_ids(self.parent_dir_path)
+        if id_list: max_id = max(id_list)
+
+        return max_id
 
     def get_config(self):
 
-        key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
-        keys_to_exclude=['parent_lab']
-
-        config = {k: getattr(self, k) for k in key_order if hasattr(self, k)}
-        config.update({k: v for k, v in self.__dict__.items() if (k not in key_order) and (k not in keys_to_exclude)})
+        config = {k: getattr(self, k) for k in self._config_key_order if hasattr(self, k)}
+        config.update({k: v for k, v in self.__dict__.items() if 
+                       (k not in self._config_keys_to_exclude) and
+                       (not k.startswith('_')) and
+                       (k not in self._config_key_order)})
 
         return config
-
-
-    def build(self):
-
-        if not os.path.exists(f'{self.path}'):
-            os.makedirs(f'{self.path}', exist_ok=False)
 
     def __repr__(self):
         return f"{self.name}"

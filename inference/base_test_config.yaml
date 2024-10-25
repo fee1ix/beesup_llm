@@ -1,0 +1,43 @@
+type: test
+id: Null
+path: Null
+datetime_init: Null
+remarks: Null
+
+
+executable: 'test.py'
+run: true
+done: false
+batch_size: 4
+use_dataset_splits:
+- test
+- eval
+base_model: meta-llama/Meta-Llama-3.1-8B-Instruct
+peft_model: Null
+training_id: Null
+training_dataset_id: Null
+checkpoint_id: Null
+dataset_id: Null
+bnb_config:
+  load_in_4bit: true
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_quant_type: nf4
+tokenizer_config:
+  padding_side: left
+  padding: longest
+  add_special_tokens: true
+  max_length: 8192
+  pad_token: <|begin_of_text|>
+  pad_token_id: 128000
+inference:
+  seed: 0
+  test_mode: false
+  generation_config:
+    return_dict_in_generate: true
+    output_scores: false
+    output_logits: false
+    max_new_tokens: 750
+    max_time: 600
+    pad_token: <|begin_of_text|>
+    pad_token_id: 128000
+    stop_strings: Null
