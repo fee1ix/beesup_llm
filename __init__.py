@@ -65,7 +65,6 @@ Total size of files: {total_size_mb:.2f} MB
         """.strip()
 
 
-
 class BaseDirectory(object):
     """
     Base class for subdirectories inside a lab
@@ -84,6 +83,8 @@ class BaseDirectory(object):
 
         elif isinstance(ref, dict): self.__init__from_config(ref)
 
+        elif hasattr(ref, 'get_config'): self.__init__from_config(ref.get_config())
+
         else: #initialize a new instance
     
             self.parent_lab_path=extract_lab_path(os.getcwd())
@@ -101,7 +102,7 @@ class BaseDirectory(object):
 
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"{self.name.upper()} initialised")
-    
+
     def __init__from_config(self,config):
         for k, v in config.items(): 
             if (v is not None) and (not hasattr(self, k)):
@@ -124,6 +125,17 @@ class BaseDirectory(object):
 
         self.__init__from_config(config)
 
+    
+
+
+    def update_attributes(self, new_dict, overwrite=True):
+        updated_config = update_nested_dict(self.get_config(), new_dict, overwrite)
+
+        for k, v in updated_config.items():
+            setattr(self, k, v)
+        
+        return
+
 
     def get_max_id(self):
         assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
@@ -145,6 +157,14 @@ class BaseDirectory(object):
                        (k not in self._config_key_order)})
 
         return config
+
+    def spawn(self):
+
+        if not os.path.exists(f'{self.path}'):
+            os.makedirs(f'{self.path}', exist_ok=False)
+
+        set_config(self.get_config())
+        logging.info(f"{self.name.upper()} spawned at {self.path}")
 
     def __repr__(self):
         return f"{self.name}"

@@ -35,7 +35,8 @@ class BaseDataset(BaseDirectory):
         for required_col in required_cols:
             if required_col not in self.dataset_df.columns:
                 self.dataset_df[required_col]=None
-
+        
+        self.dataset_df.reset_index(drop=True, inplace=True)
         self.dataset_df.to_pickle(f"{self.path}/dataset_df.pkl")
         set_config(self.get_config())
 
@@ -91,47 +92,38 @@ class BaseDataset(BaseDirectory):
         return {**inputs}
         #return {'text':input_text,**inputs}
 
-    def arrange(self, tokenizer):
-
-        
+    def arrange(self, tokenizer, dataset_df=None):
 
         if not hasattr(tokenizer, 'apply_chat_template'):
             raise AttributeError("The tokenizer does not have the method 'apply_chat_template'")
+
+        if dataset_df is None:
+            dataset_df=self.dataset_df.copy()
 
 
         self.logger.info(f"{self.name.upper()} START")
 
         for required_col in ['prompt','gold_completion','prompt_messages','gold_message']:
-            if required_col not in self.dataset_df.columns:
-                self.dataset_df[required_col]=None
+            if required_col not in dataset_df.columns:
+                dataset_df[required_col]=None
 
         train_ds,eval_ds,test_ds=None,None,None
 
-        if 'train' in self.dataset_df['split'].values:
-            train_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='train'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+        if 'train' in dataset_df['split'].values:
+            train_ds=Dataset.from_list(dataset_df[dataset_df.split=='train'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
 
-        if 'eval' in self.dataset_df['split'].values:
-            eval_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='eval'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+        if 'eval' in dataset_df['split'].values:
+            eval_ds=Dataset.from_list(dataset_df[dataset_df.split=='eval'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
             #test_ds=Dataset.from_list(dataset_df[dataset_df.split=='eval'].apply(arrange_sample,axis=1).to_list()[:2])
 
-        if 'test' in self.dataset_df['split'].values:
-            test_ds=Dataset.from_list(self.dataset_df[self.dataset_df.split=='test'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+        if 'test' in dataset_df['split'].values:
+            test_ds=Dataset.from_list(dataset_df[dataset_df.split=='test'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
         
         if train_ds: self.logger.info(f'train_ds: {len(train_ds)} samples')
         if eval_ds: self.logger.info(f'eval_ds: {len(eval_ds)} samples')
         if test_ds: self.logger.info(f'test_ds: {len(test_ds)} samples')
 
         return train_ds,eval_ds,test_ds
-
-        
-
-
-
-
-
-
- 
-
 
 
 

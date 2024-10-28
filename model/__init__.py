@@ -4,13 +4,22 @@ from ..toolkit.setup_utils import *
 import logging
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-
-
-#def parameter_update(default_params, new_params):
-
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, GenerationConfig, set_seed
 
 class BaseModelWrap(BaseDirectory):
+
+    def __new__(cls, ref=None):
+
+        temp_instance = super().__new__(cls)
+        temp_instance.__init__(ref)
+
+        if hasattr(temp_instance, 'name_or_path'):
+            if temp_instance.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
+                return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
+        
+        return super().__new__(cls)
+
+
 
     def __init__(self, ref=None):
 
@@ -20,49 +29,34 @@ class BaseModelWrap(BaseDirectory):
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend(['model','inference_tokenizer','training_tokenizer'])
 
-        bnb_config=dict(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type='nf4',
+        self._default_config=dict(
+            bnb_config=dict(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type='nf4',
+            ),
+            inference_tokenizer_config=dict(
+                padding_side='left',
+                padding='longest',
+                add_special_tokens=True,
+            ),
+            training_tokenizer_config=dict(
+                padding_side='right',
+                padding='longest',
+                add_special_tokens=True,
+            ),
+            generation_config=dict(
+                return_dict_in_generate=True,
+                output_scores=False,
+                output_logits=False,
+                max_new_tokens=750,
+                max_time=600,
+                stop_strings=None,
             )
-        if hasattr(self,'bnb_config'):
-            bnb_config.update(self.bnb_config)
-            self.bnb_config=bnb_config
-        else:  self.bnb_config=bnb_config
-
-        inference_tokenizer_config=dict(
-            padding_side='left',
-            padding='longest',
-            add_special_tokens=True,
         )
-        if hasattr(self,'inference_tokenizer_config'):
-            inference_tokenizer_config.update(self.inference_tokenizer_config)
-            self.inference_tokenizer_config=inference_tokenizer_config
-        else:  self.inference_tokenizer_config=inference_tokenizer_config
         
-        training_tokenizer_config=dict(
-            padding_side='right',
-            padding='longest',
-            add_special_tokens=True,
-            )
-        if hasattr(self,'training_tokenizer_config'):
-            training_tokenizer_config.update(self.training_tokenizer_config)
-            self.training_tokenizer_config=training_tokenizer_config
-        else:  self.training_tokenizer_config=training_tokenizer_config
+        self.update_attributes(self._default_config, overwrite=False)
 
-        generation_config=dict(
-            return_dict_in_generate=True,
-            output_scores=False,
-            output_logits=False,
-            max_new_tokens=750,
-            max_time=600,
-            stop_strings=None,
-        )
-
-        if hasattr(self,'generation_config'):
-            generation_config.update(self.generation_config)
-            self.generation_config=generation_config
-        else:  self.generation_config=generation_config
 
     def load_model(self):
 
@@ -95,14 +89,65 @@ class BaseModelWrap(BaseDirectory):
 
         return
 
+    def inference_step(self,inputs,**kwargs):
 
-    def spawn(self):
+        generation_config=GenerationConfig.from_dict(self.generation_config)
+    
+        if kwargs.get('seed'): set_seed(kwargs.get('seed'))
 
-        if not os.path.exists(f'{self.path}'):
-            os.makedirs(f'{self.path}', exist_ok=False)
+        if kwargs: generation_config.update(**kwargs)
+        if kwargs.get('generation_config'): generation_config.update(**kwargs.get('generation_config'))
+        
+        inputs.to("cuda")
+        outputs=self.model.generate(
+            generation_config=generation_config,
+            tokenizer=self.inference_tokenizer,
+            **inputs)
+        
+        return outputs
 
-        set_config(self.get_config())
-        logging.info(f"{self.name.upper()} spawned at {self.path}")
+    def inference_loop(self,dataloader,**kwargs):
+
+        import torch
+        from transformers.trainer_pt_utils import EvalLoopContainer
+
+        # Initialize containers
+        all_input_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_label_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_pred_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_all_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_losses = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+
+        for step, inputs in enumerate(dataloader):
+
+            input_ids, label_ids, pred_ids,all_ids, losses  = None, None, None, None, None
+            
+            input_ids=inputs.get('input_ids',None)
+            label_ids=inputs.get('labels',None)
+
+            self.logger.info(f'step = {step}')
+
+            all_ids=self.inference_step(inputs, **kwargs)['sequences']
+
+     
+            if input_ids is not None: all_input_ids.add(input_ids)
+            if label_ids is not None: all_label_ids.add(label_ids)
+
+            if all_ids is not None: all_all_ids.add(all_ids)
+
+            if pred_ids is not None: all_pred_ids.add(pred_ids)
+            if losses is not None: all_losses.add(losses)
+
+            del input_ids, label_ids, pred_ids, losses, all_ids
+            torch.cuda.empty_cache()
+
+        return  { 
+            'all_input_ids': all_input_ids.get_arrays(),
+            'all_label_ids': all_label_ids.get_arrays(),
+            'all_pred_ids': all_pred_ids.get_arrays(),
+            'all_all_ids': all_all_ids.get_arrays(),
+            'all_losses': all_losses.get_arrays(),
+        }
 
 
 class LlamaModelWrap(BaseModelWrap):
@@ -110,50 +155,39 @@ class LlamaModelWrap(BaseModelWrap):
     def __init__(self, ref=None):
         super().__init__(ref)
 
-        self._config_key_order.extend(['name_or_path'])
+        self._config_key_order.extend(['name_or_path','base_model'])
         self._config_keys_to_exclude.extend([])
 
         self.name_or_path = 'meta-llama/Meta-Llama-3.1-8B-Instruct'
+        self.base_model = 'Meta-Llama-3.1-8B-Instruct'
 
-        inference_tokenizer_config=dict(
-            max_length=8192,
-            pad_token='<|begin_of_text|>',
-            pad_token_id=128000
-        )
-        if hasattr(self,'inference_tokenizer_config'):
-            inference_tokenizer_config.update(self.inference_tokenizer_config)
-            self.inference_tokenizer_config=inference_tokenizer_config
-        else:  self.inference_tokenizer_config=inference_tokenizer_config
-        
-        training_tokenizer_config=dict(
-            max_length=8192,
-            pad_token='<|end_of_text|>',
-            pad_token_id=128001
+        self._default_config=dict(
+            inference_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='<|begin_of_text|>',
+                pad_token_id=128000
+            ),
+            training_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='<|end_of_text|>',
+                pad_token_id=128001
+            ),
+            generation_config=dict(
+                pad_token='<|begin_of_text|>',
+                pad_token_id=128000,
             )
-        if hasattr(self,'training_tokenizer_config'):
-            training_tokenizer_config.update(self.training_tokenizer_config)
-            self.training_tokenizer_config=training_tokenizer_config
-        else:  self.training_tokenizer_config=training_tokenizer_config
-
-        generation_config=dict(
-            pad_token='<|begin_of_text|>',
-            pad_token_id=128000,
         )
-        if hasattr(self,'generation_config'):
-            generation_config.update(self.generation_config)
-            self.generation_config=generation_config
-        else:  self.generation_config=generation_config
-
-    
+        
+        self.update_attributes(self._default_config, overwrite=False)
 
 
+from peft import AutoPeftModelForCausalLM
 class PeftLlamaModelWrap(LlamaModelWrap):
 
     def __init__(self, ref=None):
         super().__init__(ref)
 
 
-    
     def load_model(self):
 
         self.model=AutoPeftModelForCausalLM.from_pretrained(

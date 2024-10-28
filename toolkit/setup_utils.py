@@ -44,3 +44,19 @@ def extract_lab_path(path):
 
     # If no directory ending with '_lab' was found
     raise FileNotFoundError("No directory ending with '_lab' found in the path.")
+
+
+def update_nested_dict(original, updates, overwrite=True):
+    for key, value in updates.items():
+        # Check if both original[key] and value are dictionaries
+        if key in original and isinstance(original[key], dict) and isinstance(value, dict):
+            # Recurse if both are dictionaries
+            original[key] = update_nested_dict(original[key], value, overwrite)
+
+        elif key not in original or original[key] is None:
+            original[key] = value
+
+        elif overwrite:
+            original[key] = value
+
+    return original
