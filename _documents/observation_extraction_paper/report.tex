@@ -31,8 +31,8 @@
   \texttt{felix.boehning@tu-ilmenau.de} \\
   %% examples of more authors
   \And
-  Jane Doe \\
-  \texttt{jane.doe@tu-ilmenau.de} \\
+  Dr. rer. nat. Marco Seeland \\
+  \texttt{marco.seeland@tu-ilmenau.de} \\
   %% \AND
   %% Coauthor \\
   %% Affiliation \\
@@ -47,21 +47,46 @@
 \maketitle
 
 \begin{abstract}
-\textbf{\textit{Problem:}} The primary challenge addressed in this research is the labor-intensive process of transforming unstructured data into a structured dataset, particularly in the domain of biodiversity research on wild bees. Manual extraction and classification of data from numerous scientific reports is time-consuming and requires deep domain expertise.\linebreak
+\textbf{\textit{Problem:}} 
+- primary challenge: strutured data extraction from natural language reports on wild bee observations using Large Language Models (LLMs)\\
+
+% The primary challenge addressed in this research is the labor-intensive process of transforming unstructured data into a structured dataset, particularly in the domain of biodiversity research on wild bees. 
+% - Extracting structured data from natural language reports on wild bee observations is a labor-intensive process that requires domain expertise and deep language understanding
+% Manual extraction and interpretation of observation data from numerous scientific reports is time-consuming and requires deep domain expertise.
+
 \textbf{\textit{Questions:}} 
 
-\begin{enumerate}
-    \item How effective are open-source Large Language Models (LLMs) like Mistral-7B in automatically extracting structured data from scientific reports on wild bee observations?
+- How to evaluate on facts represented in natural language?
+- What influence prompts and few-shot examples have on the extraction results?
 
-    \item How can observations extracted by LLMs be evaluated against manually extracted "gold" labels in a manner that rigorously considers factual accuracy while allowing for variations in expression, given that correct answers can be represented in multiple valid forms?
-    
-    \item What gains in extraction reliability can be achieved through parameter efficient finetuning (PEFT) on open source LLMs like Mistral-7B?
-    
-    \item Can synthetically generated samples from a more capable model like GPT-4 improve fine-tuning on smaller open source models?
-    
-\end{enumerate}
+% \begin{enumerate}
 
-\textbf{\textit{Literature Review:}} The study builds on existing methods for structured data extraction using LLMs. Key techniques include Constrained Prompting, Reasoning, Output-Parsing, and Finetuning, each offering various benefits and limitations in terms of handling diverse data formats and reducing hallucinations. \textbf{\textit{Methodology:}} Mistral-7B-Instruct was finetuned on different dataset combinations including real human annotated reports, synthetic reports with synthetic labels and true negative reports containing no wild bee observations at all. The evaluation pipeline seeks the optimal mapping between labeled observations and predicted observations, identifying false positives and false negatives. It then compares the attributes of true positive observations using a fuzzy score. Precision and recall are subsequently used to derive an overall score. \textbf{\textit{Results:}} Using PEFT, a remarkable performance increase was achieved. The untrained Mistral-7B-Instruct model identified observations with an accuracy of approximately 0.3 and predicted attributes within the true-positive observations with similar accuracy. After three training epochs, observations were extracted with an improved accuracy of approximately 0.8, and attributes also reached an accuracy of approximately 0.8. The use of synthetically generated training data did not yield any noticeable advantages. \textbf{\textit{Conclusions:}} ff
+%     \item How effective are open-source Large Language Models (LLMs) like Mistral-7B in automatically extracting structured data from scientific reports on wild bee observations?
+%     \item How can observations extracted by LLMs be evaluated against manually extracted "gold" labels in a manner that rigorously considers factual accuracy while allowing for variations in expression, given that correct answers can be represented in multiple valid forms?
+%     \item What gains in extraction reliability can be achieved through parameter efficient finetuning (PEFT) on open source LLMs like Mistral-7B?
+%     \item Can synthetically generated samples from a more capable model like GPT-4 improve fine-tuning on smaller open source models?
+% \end{enumerate}
+
+\textbf{\textit{Literature Review:}} 
+- builds on existing methods for structured data extraction using LLMs, espicially medical diagnostics and clinical data extraction
+- key techniques: Prompting, Output-Parsing, and LoRa-Finetuning
+
+
+The study  Key techniques include Constrained Prompting, Reasoning, Output-Parsing, and Finetuning, each offering various benefits and limitations in terms of handling diverse data formats and reducing hallucinations. 
+
+\textbf{\textit{Methodology:}}
+- introducing a standard json-format descriping bee observations
+- bootstrapping by human-in-the-loop annotation
+
+- development of a mapping and evaluation metric, based on fuzzy string comparisons
+- LoRa-Finetune on different extraction setups (prompt, few-shot examples, no prompt)
+
+
+Mistral-7B-Instruct was finetuned on different dataset combinations including real human annotated reports, synthetic reports with synthetic labels and true negative reports containing no wild bee observations at all. The evaluation pipeline seeks the optimal mapping between labeled observations and predicted observations, identifying false positives and false negatives. It then compares the attributes of true positive observations using a fuzzy score. Precision and recall are subsequently used to derive an overall score. \textbf{\textit{Results:}} Using PEFT, a remarkable performance increase was achieved. The untrained Mistral-7B-Instruct model identified observations with an accuracy of approximately 0.3 and predicted attributes within the true-positive observations with similar accuracy. After three training epochs, observations were extracted with an improved accuracy of approximately 0.8, and attributes also reached an accuracy of approximately 0.8. The use of synthetically generated training data did not yield any noticeable advantages.
+
+\textbf{\textit{Conclusions:}}
+- Prompt influcence
+- Lora-Finetuning 
 
 \end{abstract}
 
@@ -92,7 +117,6 @@ Challenges:
 - contextual complexity, draw conclusions from context
 - evaluation: natural language --> facts can be expressed in different ways --> allow variability 
     - vs. evaluate factness, detect hallucinations, gabs, mistakes
-
 
 
 \section{Related work}
@@ -191,8 +215,6 @@ Challenges:
 % If you plan to extract features using Fourier transforms, word2vec, PCA, ICA, etc. make sure to talk about it. 
 % You might also include a representative sample of the dataset. Make sure it is relevant for highlighting your task.
 
-\
-
 - Data given: PDF files and large table with manually extracted attributes
 
 
@@ -202,6 +224,7 @@ Challenges:
     - good OCR Quality
     - no jumbled text
     - content connections must be preserved
+
 - Many PDF files had to be sorted out, because they don't fulfill the requirements
 
 - Variety of attribute formats --> parsing them in one format is not manageable
@@ -209,8 +232,6 @@ Challenges:
 -- e.g. location: coordinates, city, description of forest ways, nature reserve
 
 - attributes representing amounts can not exracted as integers because they are not formatted uniform
--- 
-
 
 
 - A uniform data format for extraction is needed
@@ -220,18 +241,15 @@ Challenges:
     - easy to understand for LLMs/ easy to describe
     - covering as many attributes as possible
 
-
 - A wild bee observation is clearly described by the scientific name (genus, species, author, year), a location and a time
 - We're decided to use the json format for extraction
 - To make it more compact similar attributes are concatenated. For example under the key location all location-related attributes (coordinates, TK, city, reserve) are specified
 - To make it even more compact redundancies are avoided by using meta attributes. In most cases Observations that are described in the same passage share attributes. Instead of specifing the same attribute for each observation individually it can be specified once as meta-attribute and thereby referes to all subsidary observations.
 
-
 - For finetuning small handable passages up to 4000 characters should be used
 - in a first iteration few short samples where assembled manually by a layman from the few available high quality reports and a model was finetuned on them. After that the model roughly learned the desired output format and was able to perform extractions.
 
 - second step: human in the loop annotation. The pre-finetuned model was integrated into a user interface and wild bee experts were able to extract attributes from their own report passages via online access. The experts were encouraged to critically examine and correct the results, generating high-quality samples for a new finetuning.
-
 
 - Data-Distribution
     - Number of observations per report passage
@@ -275,11 +293,7 @@ see extraction prompt in Appendix \ref{appendix: extraction_prompt}
 - Finetuning
 -- apply MCE-Loss only between last prediction and gold completion 
 
-
 \subsection{Evaluation-Pipeline}
-
-
-\input{figs/pred_gold_json.tex}
 
 
 \input{figs/mapping_pseudocode.tex}
@@ -352,6 +366,8 @@ For each pair of observations with matching scientific names, we compare their a
 \end{itemize}
 
 The mean similarity score across all attributes in an observation pair is referred to as the attribute similarity score. \\
+
+\input{figs/pred_gold_json.tex}
 
 \textbf{Identifying True Positives, False Positives, and False Negatives:} Each predicted observation is paired with the gold observation with the highest attribute similarity score, creating a list of potential true positive pairs. We enforce uniqueness in this pairing process, ensuring that each observation is used only once. Unpaired predicted observations are classified as hallucinations (false positives), and unpaired gold observations as unrecognized (false negatives).
 
@@ -441,12 +457,15 @@ Three Major Finetuning-Experiments, each carried out over 10 training-epochs:
 
 \section{Results and Discussion}
 
+
 < a figure comparing the experimental setups>
 
 
 
 
 \section{Conclusion/Future Work}
+
+- Input Reports must be of high quality (OCR, symbols, content connections)
 
 
 \section{Contributions}
