@@ -15,14 +15,8 @@ class BaseModelWrap(BaseDirectory):
         temp_instance = super().__new__(cls)
         temp_instance.__init__(ref)
 
-        print(temp_instance.name_or_path)
-
-        #print(temp_instance.get_config())
-
         if hasattr(temp_instance, 'name_or_path'):
-            print('name_or_path',temp_instance.name_or_path)
             if temp_instance.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-                print('returning LlamaModelWrap')
                 return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
         
         return super().__new__(cls)
@@ -81,10 +75,11 @@ class BaseModelWrap(BaseDirectory):
     
     def get_model(self):
 
-        if not hasattr(self, 'model'):
+        model=getattr(self, 'model', None)
+        if model is None:
             self.load_model()
             model=self.model
-            self.model=None
+            del self.model
             return model
         
         else:
@@ -101,11 +96,13 @@ class BaseModelWrap(BaseDirectory):
     
     def get_inference_tokenizer(self):
 
-        if not hasattr(self, 'inference_tokenizer'):
+        inference_tokenizer=getattr(self, 'inference_tokenizer', None)
+        if inference_tokenizer is None:
             self.load_inference_tokenizer()
             inference_tokenizer=self.inference_tokenizer
-            self.inference_tokenizer=None
+            del self.inference_tokenizer
             return inference_tokenizer
+        
         else:
             return self.inference_tokenizer
 
@@ -118,16 +115,18 @@ class BaseModelWrap(BaseDirectory):
 
         return
 
-    def get_training_tokenizer(self):     
+    def get_training_tokenizer(self):
 
-        if not hasattr(self, 'training_tokenizer'):
+        training_tokenizer=getattr(self, 'training_tokenizer', None)
+        if training_tokenizer is None:
             self.load_training_tokenizer()
             training_tokenizer=self.training_tokenizer
-            self.training_tokenizer=None
+            del self.training_tokenizer
             return training_tokenizer
+        
         else:
             return self.training_tokenizer
-
+            
 
     def inference_step(self,inputs,**kwargs):
 
@@ -146,7 +145,7 @@ class BaseModelWrap(BaseDirectory):
         
         return outputs
 
-    def inference_loop(self, dataloader, return_df=False, **kwargs):
+    def inference_loop(self, dataloader, **kwargs):
 
         import torch
         from transformers.trainer_pt_utils import EvalLoopContainer
