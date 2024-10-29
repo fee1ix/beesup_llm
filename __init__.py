@@ -86,7 +86,11 @@ class BaseDirectory(object):
         elif hasattr(ref, 'get_config'): self.__init__from_config(ref.get_config())
 
         else: #initialize a new instance
-    
+
+            if hasattr(ref, '__dict__'):
+                take_dict=filter_attributes(ref.__dict__)
+                self.update_attributes(take_dict, overwrite=False)
+
             self.parent_lab_path=extract_lab_path(os.getcwd())
             self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
 
@@ -124,9 +128,6 @@ class BaseDirectory(object):
         config=load_dict(path)
 
         self.__init__from_config(config)
-
-    
-
 
     def update_attributes(self, new_dict, overwrite=True):
         updated_config = update_nested_dict(self.get_config(), new_dict, overwrite)
