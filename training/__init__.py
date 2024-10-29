@@ -1,9 +1,20 @@
 from beesup_llm import *
 from ..toolkit.setup_utils import *
+from ..toolkit.llm_utils import *
 
 from beesup_llm.dataset import BaseDataset
 from beesup_llm.model import BaseModelWrap
 import logging
+
+
+import torch
+
+import types
+
+from trl import SFTTrainer
+from transformers.trainer import *
+from transformers import TrainingArguments
+from transformers import DataCollatorForSeq2Seq
 
 
 class BaseTraining(BaseDirectory):
@@ -18,7 +29,6 @@ class BaseTraining(BaseDirectory):
     #             return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
         
     #     return super().__new__(cls)
-
 
     def __init__(self, ref=None, dataset_ref=None, model_ref=None):
 
@@ -44,7 +54,7 @@ class BaseTraining(BaseDirectory):
 
         self._default_config=dict(
             done = False,
-            eval_batch_size = 4,
+            eval_batch_size = 16,
             use_dataset_splits=['train','eval'],
 
             lora_config=dict(
@@ -56,8 +66,7 @@ class BaseTraining(BaseDirectory):
                 bias='none',
                 task_type='CAUSAL_L',
             ),
-
-            training_args=dict(
+            args=dict(
                 seed=42,
                 auto_find_batch_size=True,
                 gradient_accumulation_steps=1,
@@ -78,38 +87,125 @@ class BaseTraining(BaseDirectory):
                 eval_strategy='epoch',
                 prediction_loss_only=False,
             ),
-            training_config=dict(
+            sftt_args=dict(
                 max_seq_length=4096,
                 packing=False
+            ),
+            data_collator_config=dict(
+                padding='longest',
+                label_pad_token_id =-100,
+            )
+        )
+
+        self.update_attributes(self._default_config, overwrite=False)
+
+    
+    def custom_evaluation_loop(self, dataloader, description='Evaluation', metric_key_prefix='eval'):
+        """
+        Minimal prediction/evaluation loop to prepare the model in evaluation state
+        and maintain compatibility with the original training setup.
+        """
+        args = self.args
+        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        # Handle model preparation if needed
+        if self.is_deepspeed_enabled and self.deepspeed is None:
+            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
+
+        if len(self.accelerator._models) == 0 and model is self.model:
+            model = self.accelerator.prepare_model(model, evaluation_mode=True)
+            self.model = model if self.is_fsdp_enabled else self.model
+            if model is not self.model:
+                self.model_wrapped = model
+            if self.is_deepspeed_enabled:
+                self.deepspeed = self.model_wrapped
+
+        # Set model to evaluation mode
+        model.eval()
+        if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+            self.optimizer.eval()
+
+        # Optional logging for batch size and dataset size
+        batch_size = args.eval_batch_size
+        self.logger.info(f"\n***** Running {description} *****")
+        self.logger.info(f"  Batch size = {batch_size}")
+        if hasattr(dataloader, "dataset"):
+            self.logger.info(f"  Num examples = {len(dataloader.dataset)}")
+
+        modelwrap=BaseModelWrap(model)
+        modelwrap.load_inference_tokenizer()
+
+        inference_outputs=modelwrap.inference_loop(dataloader)
+        inference_df=get_inference_df(inference_outputs)
+
+        save_path=f'{self.args.output_dir}/checkpoint-{self.state.global_step}-inference_df.pkl'
+        inference_df.to_pickle(save_path)
+
+        # Example dimensions - adjust as per your dataloader and model output shapes
+        batch_size = self.args.eval_batch_size
+        num_batches = len(dataloader)
+        num_classes = 10  # Example, adjust as per model output
+
+        # Dummy placeholders shaped like real outputs
+        all_preds = [torch.zeros(batch_size, num_classes) for _ in range(num_batches)]
+        all_labels = [torch.zeros(batch_size) for _ in range(num_batches)]
+        all_losses = [torch.tensor(0.0) for _ in range(num_batches)]
+
+        # Gather metrics, with average loss as a dummy value
+        avg_loss = torch.stack(all_losses).mean().item()  # Example average loss calculation
+        metrics = {f"{metric_key_prefix}_loss": avg_loss}
+
+        # Convert lists of tensors into a single tensor or numpy array if required by EvalLoopOutput
+        all_preds = torch.cat(all_preds, dim=0).cpu().numpy()
+        all_labels = torch.cat(all_labels, dim=0).cpu().numpy()
+        all_losses = torch.stack(all_losses).cpu().numpy()
+
+        # Wrap in EvalLoopOutput for compatibility
+        return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(all_labels))
+        
+
+
+        # # Initialize metrics and perform the evaluation loop
+        # all_preds, all_labels, all_losses = [], [], []
+        # for step, inputs in enumerate(dataloader):
+        #     with torch.no_grad():
+        #         losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only=False)
+        #         all_losses.append(losses)
+        #         all_preds.append(logits)
+        #         all_labels.append(labels)
+
+        # # Gather metrics, averaging loss if available
+        # avg_loss = torch.stack(all_losses).mean().item() if all_losses else None
+        # metrics = {f"{metric_key_prefix}_loss": avg_loss} if avg_loss is not None else {}
+
+        # return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(dataloader.dataset))
+
+
+class LoraTraining(BaseTraining):
+
+    def __init__(self, ref=None, dataset_ref=None, model_ref=None):
+        super().__init__(ref, dataset_ref, model_ref)
+
+        self._default_config=dict(
+            lora_config=dict(
+                r=32,
+                lora_alpha=3,
+                use_rslora=True,
+                target_modules='all-linear',
+                lora_dropout=0.05,
+                bias='none',
+                task_type='CAUSAL_L',
             ),
         )
 
         self.update_attributes(self._default_config, overwrite=False)
 
     
+    def get_lora_model(self, model):
 
-class LoraTraining(BaseTraining):
+        
 
-    def __init__(self, ref=None, dataset_ref=None, model_ref=None):
-        super().__init__(ref, dataset_ref, model_ref):
-
-    def get_prepared_lora_model(self):
-
-        self.logger.info(f"{self.name.upper()}\tPREPARE LORA-MODEL...")
-
-        if self.done:
-            self.logger.warning(f"{self.name.upper()} already completed")
-            return
-
-        if not hasattr(self._modelwrap,'model'):
-            self._modelwrap.load_model()
-
-        if not hasattr(self._modelwrap,'training_tokenizer'):
-            self._modelwrap.load_training_tokenizer()
-
-        model=self._modelwrap.model
-        tokenizer=self._modelwrap.training_tokenizer
-
+        self.logger.info(f"{self.name.upper()}\tprepare lora model")
 
         from peft import prepare_model_for_kbit_training
         model.gradient_checkpointing_enable()
@@ -138,7 +234,45 @@ class LoraTraining(BaseTraining):
             'lora_scale':lora_scale,
         }
 
+        set_config(self.get_config())
+
         return model
+    
+    def get_trainer(self):
+
+        model = self._modelwrap.get_model()
+        model = self.get_lora_model(model)
+
+        tokenizer = self._modelwrap.get_training_tokenizer()
+
+        train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
+
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=train_ds,
+            eval_dataset=eval_ds,
+            peft_config=self.lora_config,
+            args=TrainingArguments(**self.args),  
+            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**self.data_collator_config),
+            **self.sftt_args
+        )
+
+        trainer.evaluation_loop=types.MethodType(self.custom_evaluation_loop,trainer)
+
+
+
+
+
+        return trainer
+    
+
+
+
+
+
+    
+
+
     
     
 
