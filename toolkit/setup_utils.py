@@ -60,3 +60,35 @@ def update_nested_dict(original, updates, overwrite=True):
             original[key] = value
 
     return original
+
+
+def filter_attributes(
+        the_dict,
+        exclude_prefixes=['_','__'],
+        include_prefixes=[],
+        exclude_types=[],
+        include_types=[str,int,float,bool],
+        ):
+    filtered_dict = {}
+    
+    for key, value in the_dict.items():
+        # Check if the attribute starts with any of the exclude prefixes
+        if any(key.startswith(prefix) for prefix in exclude_prefixes):
+            continue  # Skip this attribute
+
+        # If include_prefixes is specified, check if the attribute starts with any of them
+        if include_prefixes and not any(key.startswith(prefix) for prefix in include_prefixes):
+            continue  # Skip this attribute if it doesn't match any include_prefix
+
+        # Check if the value's type is in the exclude_types list
+        if any(isinstance(value, t) for t in exclude_types):
+            continue  # Skip this attribute
+
+        # If include_types is specified, check if the value's type matches any of them
+        if include_types and not any(isinstance(value, t) for t in include_types):
+            continue  # Skip if it doesn't match any include_type
+
+        # Add the attribute to the result if it passed all filters
+        filtered_dict[key] = value
+
+    return filtered_dict
