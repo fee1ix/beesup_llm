@@ -1,5 +1,6 @@
 from beesup_llm import *
 from ..toolkit.setup_utils import *
+from ..toolkit.llm_utils import *
 
 
 import pytz
@@ -53,22 +54,6 @@ class BaseTest(BaseDirectory):
         set_config(self.get_config())
         logging.info(f"{self.name.upper()} spawned at {self.path}")
 
-    def get_inference_df(self,inference_outputs):
-
-        inference_data=[]
-        for i in range(len(inference_outputs['all_input_ids'])):
-            row=dict()
-
-            for col in ['all_input_ids', 'all_label_ids', 'all_all_ids', 'all_losses']:
-                if isinstance(inference_outputs[col],type(None)): continue
-
-                row[col[4:]]=inference_outputs[col][i]
-            
-            inference_data.append(row)
-
-        inference_df=pd.DataFrame(inference_data)
-        return inference_df
-
     def prepare_dataset_df(self,dataset_df):
 
         dataset_df.loc[~dataset_df.split.isin(self.use_dataset_splits),'split']='ignore'
@@ -90,7 +75,6 @@ class BaseTest(BaseDirectory):
 
         if not hasattr(self._modelwrap,'inference_tokenizer'):
             self._modelwrap.load_inference_tokenizer()
-
 
         from torch.utils.data import DataLoader
         from transformers import DataCollatorForSeq2Seq
@@ -114,7 +98,7 @@ class BaseTest(BaseDirectory):
             )
         
         inference_outputs=self._modelwrap.inference_loop(dataloader, **self.generation_config)
-        inference_df=self.get_inference_df(inference_outputs)
+        inference_df=get_inference_df(inference_outputs)
 
         inference_df.to_pickle(f"{self.path}/inference_df.pkl")
 
