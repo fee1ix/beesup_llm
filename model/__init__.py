@@ -3,6 +3,8 @@ from ..toolkit.setup_utils import *
 
 import logging
 
+import pandas as pd
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, GenerationConfig, set_seed
 
@@ -13,17 +15,24 @@ class BaseModelWrap(BaseDirectory):
         temp_instance = super().__new__(cls)
         temp_instance.__init__(ref)
 
+        print(temp_instance.name_or_path)
+
+        #print(temp_instance.get_config())
+
         if hasattr(temp_instance, 'name_or_path'):
+            print('name_or_path',temp_instance.name_or_path)
             if temp_instance.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
+                print('returning LlamaModelWrap')
                 return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
         
         return super().__new__(cls)
 
-
-
     def __init__(self, ref=None):
 
         self.type='model'
+        if isinstance(ref, torch.nn.Module):
+            self.model=ref
+
         super().__init__(ref)
 
         self._config_key_order.extend([])
@@ -57,7 +66,6 @@ class BaseModelWrap(BaseDirectory):
         
         self.update_attributes(self._default_config, overwrite=False)
 
-
     def load_model(self):
 
         self.model=AutoModelForCausalLM.from_pretrained(
@@ -71,6 +79,17 @@ class BaseModelWrap(BaseDirectory):
 
         return
     
+    def get_model(self):
+
+        if not hasattr(self, 'model'):
+            self.load_model()
+            model=self.model
+            self.model=None
+            return model
+        
+        else:
+            return self.model
+
     def load_inference_tokenizer(self):
 
         self.inference_tokenizer=AutoTokenizer.from_pretrained(
@@ -80,6 +99,16 @@ class BaseModelWrap(BaseDirectory):
 
         return
     
+    def get_inference_tokenizer(self):
+
+        if not hasattr(self, 'inference_tokenizer'):
+            self.load_inference_tokenizer()
+            inference_tokenizer=self.inference_tokenizer
+            self.inference_tokenizer=None
+            return inference_tokenizer
+        else:
+            return self.inference_tokenizer
+
     def load_training_tokenizer(self):
 
         self.training_tokenizer=AutoTokenizer.from_pretrained(
@@ -88,6 +117,17 @@ class BaseModelWrap(BaseDirectory):
         )
 
         return
+
+    def get_training_tokenizer(self):     
+
+        if not hasattr(self, 'training_tokenizer'):
+            self.load_training_tokenizer()
+            training_tokenizer=self.training_tokenizer
+            self.training_tokenizer=None
+            return training_tokenizer
+        else:
+            return self.training_tokenizer
+
 
     def inference_step(self,inputs,**kwargs):
 
@@ -106,7 +146,7 @@ class BaseModelWrap(BaseDirectory):
         
         return outputs
 
-    def inference_loop(self,dataloader,**kwargs):
+    def inference_loop(self, dataloader, return_df=False, **kwargs):
 
         import torch
         from transformers.trainer_pt_utils import EvalLoopContainer
@@ -158,10 +198,10 @@ class LlamaModelWrap(BaseModelWrap):
         self._config_key_order.extend(['name_or_path','base_model'])
         self._config_keys_to_exclude.extend([])
 
-        self.name_or_path = 'meta-llama/Meta-Llama-3.1-8B-Instruct'
-        self.base_model = 'Meta-Llama-3.1-8B-Instruct'
-
         self._default_config=dict(
+            name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct',
+            base_model='Meta-Llama-3.1-8B-Instruct',
+
             inference_tokenizer_config=dict(
                 max_length=8192,
                 pad_token='<|begin_of_text|>',
