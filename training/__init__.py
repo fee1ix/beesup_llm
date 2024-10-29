@@ -19,16 +19,15 @@ from transformers import DataCollatorForSeq2Seq
 
 class BaseTraining(BaseDirectory):
 
-    # def __new__(cls, ref=None):
+    def __new__(cls, ref=None):
 
-    #     temp_instance = super().__new__(cls)
-    #     temp_instance.__init__(ref)
+        temp_instance = super().__new__(cls)
+        temp_instance.__init__(ref)
 
-    #     if hasattr(temp_instance, 'name_or_path'):
-    #         if temp_instance.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-    #             return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
+        if hasattr(temp_instance, 'lora_config'):
+            return super(BaseTraining,LoraTraining).__new__(LoraTraining)
         
-    #     return super().__new__(cls)
+        return super().__new__(cls)
 
     def __init__(self, ref=None, dataset_ref=None, model_ref=None):
 
@@ -45,7 +44,6 @@ class BaseTraining(BaseDirectory):
             model_ref = self.model_config
 
         self._dataset=BaseDataset(dataset_ref)
-        self.dataset_df=self.prepare_dataset_df(self._dataset.dataset_df)
         self.dataset_config=self._dataset.get_config()
 
         self._modelwrap=BaseModelWrap(model_ref)
@@ -54,18 +52,6 @@ class BaseTraining(BaseDirectory):
 
         self._default_config=dict(
             done = False,
-            eval_batch_size = 16,
-            use_dataset_splits=['train','eval'],
-
-            lora_config=dict(
-                r=32,
-                lora_alpha=3,
-                use_rslora=True,
-                target_modules='all-linear',
-                lora_dropout=0.05,
-                bias='none',
-                task_type='CAUSAL_L',
-            ),
             args=dict(
                 seed=42,
                 auto_find_batch_size=True,
@@ -96,11 +82,36 @@ class BaseTraining(BaseDirectory):
                 label_pad_token_id =-100,
             )
         )
+        self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
 
         self.update_attributes(self._default_config, overwrite=False)
 
+    def run(self, trainer, **kwargs):
+
+        #trainer = kwargs.get('trainer', self.get_trainer(**kwargs))
+
+        self.logger.info(f"Running {self.name.upper()}")
+
+        trainer.train()
+
+        self.logger.info(f"Completed")
+
+        self.done=True
+        set_config(self.get_config())
+
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
     
-    def custom_evaluation_loop(self, dataloader, description='Evaluation', metric_key_prefix='eval'):
+    @staticmethod
+    def custom_evaluation_loop(
+        self,
+        dataloader: DataLoader,
+        description: str,
+        prediction_loss_only: Optional[bool] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> EvalLoopOutput:
         """
         Minimal prediction/evaluation loop to prepare the model in evaluation state
         and maintain compatibility with the original training setup.
@@ -122,15 +133,17 @@ class BaseTraining(BaseDirectory):
 
         # Set model to evaluation mode
         model.eval()
-        if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
-            self.optimizer.eval()
+        # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+        #     self.optimizer.eval()
 
         # Optional logging for batch size and dataset size
         batch_size = args.eval_batch_size
-        self.logger.info(f"\n***** Running {description} *****")
-        self.logger.info(f"  Batch size = {batch_size}")
-        if hasattr(dataloader, "dataset"):
-            self.logger.info(f"  Num examples = {len(dataloader.dataset)}")
+        # self.logger.info(f"\n***** Running {description} *****")
+        # self.logger.info(f"  Batch size = {batch_size}")
+        # if hasattr(dataloader, "dataset"):
+        #     self.logger.info(f"  Num examples = {len(dataloader.dataset)}")
+
+        print(vars(dataloader))
 
         modelwrap=BaseModelWrap(model)
         modelwrap.load_inference_tokenizer()
@@ -181,6 +194,8 @@ class BaseTraining(BaseDirectory):
         # return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(dataloader.dataset))
 
 
+
+
 class LoraTraining(BaseTraining):
 
     def __init__(self, ref=None, dataset_ref=None, model_ref=None):
@@ -197,13 +212,12 @@ class LoraTraining(BaseTraining):
                 task_type='CAUSAL_L',
             ),
         )
+        self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
 
         self.update_attributes(self._default_config, overwrite=False)
 
     
     def get_lora_model(self, model):
-
-        
 
         self.logger.info(f"{self.name.upper()}\tprepare lora model")
 
@@ -238,30 +252,31 @@ class LoraTraining(BaseTraining):
 
         return model
     
-    def get_trainer(self):
+    def get_trainer(self, **kwargs):
 
-        model = self._modelwrap.get_model()
-        model = self.get_lora_model(model)
+        model=kwargs.get('model', None)
+        if model is None:
+            model = self._modelwrap.get_model()
+            model = self.get_lora_model(model)
+
 
         tokenizer = self._modelwrap.get_training_tokenizer()
 
         train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
 
+        from peft import LoraConfig
+
         trainer = SFTTrainer(
             model=model,
             train_dataset=train_ds,
             eval_dataset=eval_ds,
-            peft_config=self.lora_config,
+            peft_config=LoraConfig(**self.lora_config),
             args=TrainingArguments(**self.args),  
             data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**self.data_collator_config),
             **self.sftt_args
         )
 
         trainer.evaluation_loop=types.MethodType(self.custom_evaluation_loop,trainer)
-
-
-
-
 
         return trainer
     
