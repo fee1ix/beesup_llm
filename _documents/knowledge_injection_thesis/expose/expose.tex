@@ -13,6 +13,7 @@
 %\usepackage{hyperref}           % Provides clickable links in the PDF-document for \ref
 \usepackage{graphicx}
 \usepackage{lipsum}
+\usepackage{mathtools}
 
 % Allows to set units
 %\usepackage[ugly]{units}        % Allows you to type units with correct spacing and font style. Usage: $\unit[100]{m}$ or $\unitfrac[100]{m}{s}$
@@ -73,75 +74,122 @@ Duration: & (01.10.2024)-(31.03.2025)\\
 
 \section*{Motivation}
 
-- Project: BeesUp
-- Develop AI Tools to support wild bee friedly Environmental design
-- Therefore wild-bee expert model is needed. Such an expert could be used as chatbot that is easily accessible gardeners or urban planners, and could answer questions like: 
-    - "What endangered wild bees are in my area? What plants can I plant to support them?"
-    - "How can I build habitats for ground-nesting or cavity-nesting wild bees?"
-    - "Are there any pesticides that are safe for the wild bees in my area?"
+% - Project: BeesUp
+% - Develop AI Tools to support wild bee friedly Environmental design
+% - Therefore wild-bee expert model is needed. Such an expert could be used as chatbot that is easily accessible gardeners or urban planners, and could answer questions like: 
+%     - "What endangered wild bees are in my area? What plants can I plant to support them?"
+%     - "How can I build habitats for ground-nesting or cavity-nesting wild bees?"
+%     - "Are there any pesticides that are safe for the wild bees in my area?"
 
-- There are two different main-approaches for building such a domain-expert model. 
-- Retrieved Augmented Generation (RAG) is a method that enlarged the knowledge of a LLM by providing additional context information retrieved from the users question before generating the answer.
-- Model Training injects the new knowledge into the model by adapting its weights.
+% - There are two different main-approaches for building such a domain-expert model. 
+% - Retrieved Augmented Generation (RAG) is a method that enlarged the knowledge of a LLM by providing additional context information retrieved from the users question before generating the answer.
+% - Model Training injects the new knowledge into the model by adapting its weights.
 
-- It is often conjectured that finetuning LLMs on new knowledge encourages hallucinations. A recent study \textit{Does Fine-Tuning LLMs on New Knowledge Encourage Hallucinations?} \cite{gekhman2024doesfinetuningllmsnew} have shown that this is true as long as the new knowledge is not grounded in its pre-existing knowledge. But knowledge marked as "maybe known" - which include facts with some degree of uncertainty - enhances the model's ability to utilize its pre-existing knowledge more effectively.
-- Wild bee related knowledge is most likely already grounded in the pre-existing knowledge of the LLM. Therefore Finetuning on further/deeper Wild Bee knowledge could be a promising approch to build a Wild Bee Expert Model.
+% - It is often conjectured that finetuning LLMs on new knowledge encourages hallucinations. A recent study \textit{Does finetuning LLMs on New Knowledge Encourage Hallucinations?} \cite{gekhman2024doesfinetuningllmsnew} have shown that this is true as long as the new knowledge is not grounded in its pre-existing knowledge. But knowledge marked as "maybe known" - which include facts with some degree of uncertainty - enhances the model's ability to utilize its pre-existing knowledge more effectively.
+% - Wild bee related knowledge is most likely already grounded in the pre-existing knowledge of the LLM. Therefore Finetuning on further/deeper Wild Bee knowledge could be a promising approch to build a Wild Bee Expert Model.
 
-- \textit{Educating LLMs like Human Students: Structure-aware Injection of Domain Knowledge} \cite{liu2024educatingllmslikehuman} introduces the StructTuning method, a structured fine-tuning approach that organizes knowledge in a taxonomy, which enhances a model’s ability to integrate domain-specific information holistically within its weights. They found that structured embedding of knowledge in model weights leads to better performance in domain-specific reasoning tasks, with fewer inconsistencies compared to retrieval-based methods like RAG.
+% - \textit{Educating LLMs like Human Students: Structure-aware Injection of Domain Knowledge} \cite{liu2024educatingllmslikehuman} introduces the StructTuning method. Instead of 
+% training the model on large amounts of unstructured and incoherent data, they propose a method that organizes the knowledge-to-inject in a taxonomy, which enhances a model’s ability to integrate domain-specific information holistically within its weights. They found that structured embedding of knowledge in model weights leads to better performance in domain-specific reasoning tasks, with fewer inconsistencies compared to retrieval-based methods like RAG.
+
+
+The project BeesUp aims to address the urgent need for ecological designs that support wild bee populations by developing AI tools for environmental planning. The role of these tools is to assist users such as gardeners and urban planners in creating habitats that are friendly to wild bees. By incorporating expert knowledge on wild bee conservation, these tools can guide users with inquiries like, \textit{"What endangered wild bees are in my area, and which plants support them?"} or \textit{"How can I construct habitats for ground- and cavity-nesting bees?"} Providing easy access to this knowledge could empower users to make ecologically responsible choices, enhancing the survival prospects for endangered bee species within urban landscapes.\\
+
+To realize this, a domain-expert model tailored to wild bee knowledge is essential. Such a model could function as a chatbot, readily accessible for real-time guidance. For developing this expert model, two primary approaches are under consideration: Retrieved Augmented Generation (RAG) and Model Training. RAG enriches a model’s responses by retrieving context-relevant information from external sources, while Model Training involves adapting the model’s weights to incorporate specific knowledge areas.\\
+
+However, recent studies indicate that finetuning large language models (LLMs) with new factual information can unintentionally promote hallucinations if the new knowledge does not align with the model's pre-existing understanding. For example, the study \textit{"Does finetuning LLMs on New Knowledge Encourage Hallucinations?"} \cite{gekhman2024doesfinetuningllmsnew} suggests that models finetuned on ungrounded facts are prone to generating inaccurate responses. Conversely, information that has some foundation in the model's original knowledge base  categorized as ("maybe known") tends to enhance model reliability by supporting more grounded inferences. Considering that foundational wild bee knowledge likely already exists within the LLM’s pre-trained framework, finetuning could be a feasible and promising approach for deepening its understanding in this domain.\\ 
+
+Furthermore, a structured approach such as the StructTuning method, proposed in \textit{"Educating LLMs like Human Students: Structure-aware Injection of Domain Knowledge"} \cite{liu2024educatingllmslikehuman} could be advantageous. This method organizes knowledge into a taxonomy during finetuning, enabling more coherent integration of domain-specific knowledge. Notably, it has been shown to improve model performance on specialized tasks with fewer inconsistencies than retrieval-based approaches like RAG.\\
 
 \section*{Task Description}
 
-- given a relational database with scraped data from wikipedia.de \cite{wikipedia2024} and wildbienenwelt.de \cite{wildbienenwelt2024} that should be used as the knowledge base
+% - given a relational database with scraped data from wikipedia.de \cite{wikipedia2024} and wildbienenwelt.de \cite{wildbienenwelt2024} that should be used as the knowledge base
 
-- the knowledge is arranged in triples: scientific name, property, value
-- generate embedding vectors for each knowledge triple
+% - the knowledge is arranged in triples: scientific name, property, value
 
-- apply hierarchical clustering to derrive a knowledge graph representing the knowledge structure (comparable to a table of contents) 
+% structure the knowlede/ derrive a knowledge taxonomy:
+% - generate embedding vectors for each knowledge triple
+% - apply hierarchical clustering to derrive a knowledge graph representing the knowledge structure (comparable to a table of contents) 
 
-- Using PEFT techniques to finetune a LLM on the knowledge triples under inclusion of the knowledge graph
+% injecting the knowlege:
+% - Using PEFT techniques to finetune a LLM on the knowledge triples under inclusion of the knowledge graph/ taxonomy
 
-- Implement a RAG System using the same base LLM and the same knowledge triples as baseline
+% implement baseline:
+% - finetune LLM with same knowledge withour providing the knowledge taxonomy
+% - Implement a RAG System using the same knowledge base/ same LLM 
 
-- Implement a evaluation pipeline to compare the performance of the two systems and also the performance of the plain base LLM model
+
+% - Implement a evaluation pipeline to compare the performance of the systems and also the performance of the plain base LLM model
+
+A relational knowledge-base is given, consisting of triples in the format \textless \texttt{scientific\_name} - \texttt{property} - \texttt{value}\textgreater, sourced from Wikipedia.de \cite{wikipedia2024} and Wildbienenwelt.de \cite{wildbienenwelt2024}. The task is to enhance large language models (LLMs) by integrating this structured domain-specific knowledge. The project comprises the following steps:
+\begin{itemize}
+  \item \textbf{Structure Knowledge:} by transforming each triple into embedding vectors and applying hierarchical clustering to create a taxonomy.
+  \item \textbf{Inject Knowledge:} implement a training-pipeline applying Parameter-Efficient finetuning (PEFT) techniques, implement a baseline RAG system.
+  \item \textbf{Evaluation:} implement an evaluation pipeline that querries the injected knowledge and compares the performance of the systems.
+\end{itemize}
 
 \section*{Approach}
 
-Methods:
-  - Use Meta-Llama-3.1-8B-Instruct as base model (LLM) \cite{dubey2024llama3herdmodels}
+As base LLM, Meta-LLaMA-3.1-8B-Instruct \cite{dubey2024llama3herdmodels} will be used. Embeddings for retrieval and clustering will be generated using jina-embeddings-v3 \cite{sturua2024jinaembeddingsv3multilingualembeddingstask}. To construct the hierarchical taxonomy, we apply clustering techniques, such as the Lance-Williams \cite{lance1967general} or UPGMA algorithms \cite{sokal1958statistical}, implemented through SciPy \cite{2020SciPy-NMeth}. For finetuning, we employ Low-Rank Adaptation (LoRa) \cite{hu2021loralowrankadaptationlarge} for parameter-efficient training, using peft \cite{peft} and trl \cite{vonwerra2022trl} frameworks based on Hugging Face Transformers \cite{wolf-etal-2020-transformers}.\\
 
-  - Use jina-embeddings-v3 for embeddings \cite{sturua2024jinaembeddingsv3multilingualembeddingstask}
-  - By generating a vector for each triple element individually they can be weighted and combined to represent the whole triple
-
-  - Use hierachical cluster algorithms like Lance-Williams algorithm \cite{lance1967general} or UPGMA algorithm \cite{sokal1958statistical} implemented by SciPy \cite{2020SciPy-NMeth}
-
-  - Use LoRa \cite{hu2021loralowrankadaptationlarge} for parameter efficient finetuning implemented by peft \cite{peft} and trl \cite{vonwerra2022trl} based on huggingface transformers \cite{wolf-etal-2020-transformers}
-
-
-Metrics:
-  - Evaluation over natural language question answering is hard to quantify.
-  - As shown in \cite{zhang2024multiplechoicequestionsefficientrobust} Single-Choice or Multiple-Choice Questions are robust LLM Evaluators. The answer option outputted by the model can be parsed easily and transdered into Recall and Precision metrics.
-
-  - Evaluation questions need to cover the injected knowledge thematically and also should challenge beyond single facs. Multi-hop-questions require a more holistic knowledge-understanding. 
-
-  - Nevertheless also free form questions should be used. They are a good indicator to check the models ability to formulate and reason which might be impaired by finetuning. Answers could be evaluated by gpt-4 (that can receive correspondig knowledge chunks as assesment basis) or domain experts. 
-
-  - Evaluation questions can be generated by providing gpt-4 with some knowledge triples and ask it to generate questions that are answerable by the given knowledge. 
+\textbf{Metrics:} Evaluating LLM performance in natural language question answering can be challenging to quantify directly. However, research indicates that Single-Choice or Multiple-Choice formats are effective evaluative tools, allowing for precise calculation of recall and precision metrics by parsing model responses into discrete answer options \cite{zhang2024multiplechoicequestionsefficientrobust}. Therefore, we will include synthetic and expert-designed questions in four categories:
 
 \begin{itemize}
-  \item \textbf{synthetic Multiple-Choice questions} generated by gpt-4 covering simpler tasks like remembering short attribut-facts
-  \item \textbf{expert Multiple-Choice questions} generated by domain experts covering more complex tasks requiring a holistic understanding of the domain
-  \item \textbf{synthetic Free form questions} generated by gpt-4
-  \item \textbf{expert Free form questions} generated by domain experts
+  \item \textbf{Synthetic Multiple-Choice Questions} generated by GPT-4 \cite{openai2023gpt4} covering simpler tasks like remembering short attribut-facts.
+  \item \textbf{Expert Multiple-Choice Questions} generated by domain experts covering more complex tasks requiring a holistic understanding of the domain.
+  \item \textbf{Synthetic Free-Form Questions} generated by GPT-4.
+  \item \textbf{Expert Free Form Questions} generated by domain experts.
+\end{itemize}
+
+Free-form questions will be evaluated either by GPT-4 (provided with reference knowledge) or by domain experts.\\
+
+
+\textbf{Design of Experiment:} The experiments will test various configurations to assess the impact of different levels and methods of knowledge integration. The following systems will be evaluated:
+
+\begin{itemize}
+  \item \textbf{Base Model:} unmodified Meta-LLaMA-3.1-8B-Instruct.
+  \item \textbf{Base Model + RAG:} base model enhanced with a Retrieval-Augmented Generation (RAG) system to access domain-specific knowledge.
+  \item \textbf{Finetuned Model:} base model finetuned on domain-specific triples without hierarchical guidance.
+  \item \textbf{Finetuned Model + Taxonomy:} base model finetuned with the added knowledge taxonomy, evaluated in multiple parameter setups.
 \end{itemize}
 
 
-Design of Experiment:
-- different expert systems will be evaluated:
-\begin{itemize}
-  \item \textbf{base Model}
-  \item \textbf{base Model + RAG}  
-  \item \textbf{finetuned Model:} potentially in different parameter setups
-\end{itemize}
+% Methods:
+%   - Use Meta-Llama-3.1-8B-Instruct as base model (LLM) \cite{dubey2024llama3herdmodels}
+
+%   - Use jina-embeddings-v3 for embeddings \cite{sturua2024jinaembeddingsv3multilingualembeddingstask}
+%   - By generating a vector for each triple element individually they can be weighted and combined to represent the whole triple
+
+%   - Use hierachical cluster algorithms like Lance-Williams algorithm \cite{lance1967general} or UPGMA algorithm \cite{sokal1958statistical} implemented by SciPy \cite{2020SciPy-NMeth}
+
+%   - Use LoRa \cite{hu2021loralowrankadaptationlarge} for parameter efficient finetuning implemented by peft \cite{peft} and trl \cite{vonwerra2022trl} based on huggingface transformers \cite{wolf-etal-2020-transformers}
+
+
+% Metrics:
+%   - Evaluation over natural language question answering is hard to quantify.
+%   - As shown in \cite{zhang2024multiplechoicequestionsefficientrobust} Single-Choice or Multiple-Choice Questions are robust LLM Evaluators. The answer option outputted by the model can be parsed easily and transdered into Recall and Precision metrics.
+
+%   - Evaluation questions need to cover the injected knowledge thematically and also should challenge beyond single facs. Multi-hop-questions require a more holistic knowledge-understanding. 
+
+%   - Nevertheless also free form questions should be used. They are a good indicator to check the models ability to formulate and reason which might be impaired by finetuning. Answers could be evaluated by GPT-4 (that can receive correspondig knowledge chunks as assesment basis) or domain experts. 
+
+%   - Evaluation questions can be generated by providing GPT-4 with some knowledge triples and ask it to generate questions that are answerable by the given knowledge. 
+
+% \begin{itemize}
+%   \item \textbf{synthetic Multiple-Choice questions} generated by GPT-4 covering simpler tasks like remembering short attribut-facts
+%   \item \textbf{expert Multiple-Choice questions} generated by domain experts covering more complex tasks requiring a holistic understanding of the domain
+%   \item \textbf{synthetic Free form questions} generated by GPT-4
+%   \item \textbf{expert Free form questions} generated by domain experts
+% \end{itemize}
+
+
+% Design of Experiment:
+% - different expert systems will be evaluated:
+% \begin{itemize}
+%   \item \textbf{base Model}
+%   \item \textbf{base Model + RAG}
+%   \item \textbf{finetuned Model} 
+%   \item \textbf{finetuned Model + taxonomy:} potentially in different parameter setups
+% \end{itemize}
 
 
 \section*{Time Schedule}
@@ -161,7 +209,6 @@ Design of Experiment:
 \end{tabular}
 
 \vspace{5mm}
-\section*{References}
 {\small
 \begingroup
 \let\chapter\section
