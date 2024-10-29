@@ -87,9 +87,13 @@ class BaseDirectory(object):
 
         else: #initialize a new instance
 
-            if hasattr(ref, '__dict__'):
-                take_dict=filter_attributes(ref.__dict__)
-                self.update_attributes(take_dict, overwrite=False)
+            if hasattr(ref, '__class__'):
+                property_dict=filter_attributes(ref.__dict__)
+                for cls in ref.__class__.__mro__:
+                    property_dict.update(filter_attributes(cls.__dict__))
+                
+                self.update_attributes(property_dict, overwrite=False)
+                if hasattr(ref, 'name_or_path'): self.name_or_path=ref.name_or_path
 
             self.parent_lab_path=extract_lab_path(os.getcwd())
             self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
