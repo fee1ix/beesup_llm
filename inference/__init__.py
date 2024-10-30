@@ -103,8 +103,10 @@ class BaseTest(BaseDirectory):
         inference_df.to_pickle(f"{self.path}/inference_df.pkl")
 
         self.logger.info(f"{self.name.upper()} completed")
-        self.datetime_end=datetime.datetime.now(TIMEZONE)
+        
         self.done=True
+        self.datetime_end=self.get_datetime()
+        
         set_config(self.get_config())
         return
 
