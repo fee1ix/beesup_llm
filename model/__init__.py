@@ -12,14 +12,17 @@ class BaseModelWrap(BaseDirectory):
 
     def __new__(cls, ref=None):
 
-        temp_instance = super().__new__(cls)
-        temp_instance.__init__(ref)
+        if hasattr_or_key(ref, 'model_config'):
+            ref = ref.model_config
 
-        if hasattr(temp_instance, 'name_or_path'):
-            if temp_instance.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-                return super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
-        
-        return super().__new__(cls)
+        if hasattr_or_key(ref, 'name_or_path') and ref.name_or_path == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
+            instance = super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
+            
+        else:
+            instance = super().__new__(cls)
+
+        instance._ref = ref
+        return instance
 
     def __init__(self, ref=None):
 
