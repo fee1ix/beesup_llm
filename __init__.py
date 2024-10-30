@@ -75,6 +75,9 @@ class BaseDirectory(object):
         self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
         self._config_keys_to_exclude=['logger']
 
+        if hasattr(self,'_ref'):
+            ref=self._ref; del self._ref
+
         if not hasattr(self, 'type'): self.type = 'directory'
 
         if isinstance(ref, int): self.__init__from_id(ref)
@@ -86,14 +89,6 @@ class BaseDirectory(object):
         elif hasattr(ref, 'get_config'): self.__init__from_config(ref.get_config())
 
         else: #initialize a new instance
-
-            if hasattr(ref, '__class__'):
-                property_dict=filter_attributes(ref.__dict__)
-                for cls in ref.__class__.__mro__:
-                    property_dict.update(filter_attributes(cls.__dict__))
-                
-                self.update_attributes(property_dict, overwrite=False)
-                if hasattr(ref, 'name_or_path'): self.name_or_path=ref.name_or_path
 
             self.parent_lab_path=extract_lab_path(os.getcwd())
             self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
@@ -171,8 +166,12 @@ class BaseDirectory(object):
         set_config(self.get_config())
         logging.info(f"{self.name.upper()} spawned at {self.path}")
 
+    def get_datetime(self):
+        return datetime.datetime.now(TIMEZONE)
+
     def __repr__(self):
-        return f"{self.name}"
+
+        return f"{self.name} {type(self)}"
 
 
 
