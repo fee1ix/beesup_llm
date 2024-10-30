@@ -62,16 +62,34 @@ def update_nested_dict(original, updates, overwrite=True):
     return original
 
 
+def hasattr_or_key(obj, name):
+    # Check if it's a dictionary and contains the key
+    if isinstance(obj, dict):
+        return name in obj
+    # Otherwise, check if it's an object and has the attribute
+    return hasattr(obj, name)
+
+
 def filter_attributes(
-        the_dict,
+        input_obj,
         exclude_prefixes=['_','__'],
         include_prefixes=[],
         exclude_types=[],
         include_types=[str,int,float,bool],
         ):
+    
+    if isinstance(input_obj, dict):
+        input_dict=input_obj
+        
+
+    else:
+        if hasattr(input_obj,'__dict__'):
+            input_dict = input_obj.__dict__
+    
+    del input_obj
     filtered_dict = {}
     
-    for key, value in the_dict.items():
+    for key, value in input_dict.items():
         # Check if the attribute starts with any of the exclude prefixes
         if any(key.startswith(prefix) for prefix in exclude_prefixes):
             continue  # Skip this attribute
@@ -92,3 +110,16 @@ def filter_attributes(
         filtered_dict[key] = value
 
     return filtered_dict
+
+# def gather_attributes(input_obj,**kwargs):
+
+#     attributes_dict=filter_attributes(input_obj, **kwargs)
+
+#     if hasattr(input_obj,'__class__'):
+
+#         for cls in input_obj.__class__.__mro__:
+
+#             if not hasattr(cls, '__dict__'): continue
+
+#             attributes_dict.update(filter_attributes(vars(cls), **kwargs))
+
