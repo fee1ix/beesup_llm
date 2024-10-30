@@ -19,10 +19,10 @@ from transformers import DataCollatorForSeq2Seq
 
 class BaseTraining(BaseDirectory):
 
-    def __new__(cls, ref=None):
+    def __new__(cls, ref=None, dataset_ref=None, model_ref=None):
 
         temp_instance = super().__new__(cls)
-        temp_instance.__init__(ref)
+        temp_instance.__init__(ref, dataset_ref, model_ref)
 
         if hasattr(temp_instance, 'lora_config'):
             return super(BaseTraining,LoraTraining).__new__(LoraTraining)
@@ -97,6 +97,7 @@ class BaseTraining(BaseDirectory):
         self.logger.info(f"Completed")
 
         self.done=True
+        self.datetime_end=self.get_datetime()
         set_config(self.get_config())
 
         import gc
