@@ -45,6 +45,28 @@ def extract_lab_path(path):
     # If no directory ending with '_lab' was found
     raise FileNotFoundError("No directory ending with '_lab' found in the path.")
 
+def extract_type_from_path(path):
+    match = re.search(r"/(\w+)s/\d+_\1\b", path)
+    if match:
+        return match.group(1)
+    else:
+        return None
+
+
+def extract_type(input_obj):
+
+    the_type=None
+
+    if isinstance(input_obj, str):
+        the_type=extract_type_from_path(input_obj)
+
+    elif hasattr_or_key(input_obj,'type'):
+        the_type=getattr_or_key(input_obj,'type')
+
+
+    return the_type
+
+
 
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
@@ -62,12 +84,22 @@ def update_nested_dict(original, updates, overwrite=True):
     return original
 
 
-def hasattr_or_key(obj, name):
+def hasattr_or_key(obj, key):
     # Check if it's a dictionary and contains the key
     if isinstance(obj, dict):
-        return name in obj
+        return key in obj
     # Otherwise, check if it's an object and has the attribute
-    return hasattr(obj, name)
+    return hasattr(obj, key)
+
+def getattr_or_key(obj, key, val=None):
+    # Check if it's a dictionary and contains the key
+
+    if isinstance(obj, dict):
+        if key in obj: val = obj[key]
+    
+    val = getattr(obj, key, val)
+
+    return val
 
 
 def filter_attributes(
