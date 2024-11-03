@@ -21,13 +21,17 @@ class BaseTraining(BaseDirectory):
 
     def __new__(cls, ref=None, dataset_ref=None, model_ref=None):
 
-        temp_instance = super().__new__(cls)
-        temp_instance.__init__(ref, dataset_ref, model_ref)
+        instance = super().__new__(cls)
+        instance.__init__(ref, dataset_ref, model_ref)
 
-        if hasattr(temp_instance, 'lora_config'):
-            return super(BaseTraining,LoraTraining).__new__(LoraTraining)
+        if hasattr(instance, 'lora_config'):
+ 
+            instance = super(BaseTraining,LoraTraining).__new__(LoraTraining)
         
-        return super().__new__(cls)
+        else:
+            instance = super().__new__(cls)
+  
+        return instance
 
     def __init__(self, ref=None, dataset_ref=None, model_ref=None):
 
