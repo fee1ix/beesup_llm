@@ -10,22 +10,44 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 class BaseModelWrap(BaseDirectory):
 
-    def __new__(cls, ref=None):
+    def __new__(cls, ref=None, skip_new=False, **kwargs):
 
-        base_instance=BaseDirectory(ref)
+        if skip_new: return super().__new__(cls)
 
-        _ref=None
         if hasattr_or_key(ref, 'model_config'):
             ref = getattr_or_key(ref,'model_config')
-            instance._ref = ref
+
+        if is_valid_config(ref):
+            config = ref
+
+        else:
+            if 'type' not in kwargs: kwargs['type']='model'
+            config=get_config_from_ref(ref, **kwargs)
         
-        if getattr_or_key(instance, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-            instance = super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
+
+        config=get_config_from_ref(ref, **kwargs)
+
+        if (cls is BaseModelWrap):
+
+            if getattr_or_key(config, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
+                #from beesup_llm.dataset import BaseDataset
+                return LlamaModelWrap(config, skip_new=True, **kwargs)
+        
+        return BaseModelWrap(config, skip_new=True)
+        
+
+        # _ref=None
+        # if hasattr_or_key(ref, 'model_config'):
+        #     ref = getattr_or_key(ref,'model_config')
+        #     base_instance._ref = ref
+        
+        # if getattr_or_key(base_instance, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
+        #     base_instance = super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
                       
-        # else:
-        #     instance = super().__new__(cls)
+        # # else:
+        # #     instance = super().__new__(cls)
         
-        return instance
+        # return base_instance
 
     def __init__(self, ref=None):
 
@@ -197,7 +219,7 @@ class BaseModelWrap(BaseDirectory):
 
 class LlamaModelWrap(BaseModelWrap):
 
-    def __init__(self, ref=None):
+    def __init__(self, ref=None, **kwargs):
         super().__init__(ref)
 
         self._config_key_order.extend(['name_or_path','base_model'])
@@ -229,7 +251,7 @@ class LlamaModelWrap(BaseModelWrap):
 from peft import AutoPeftModelForCausalLM
 class PeftLlamaModelWrap(LlamaModelWrap):
 
-    def __init__(self, ref=None):
+    def __init__(self, ref=None, **kwargs):
         super().__init__(ref)
 
 

@@ -3,10 +3,10 @@ import os
 from .toolkit import *
 from .toolkit.setup_utils import *
 
-from beesup_llm.dataset import BaseDataset
-from beesup_llm.training import BaseTraining
-from beesup_llm.inference import BaseTest
-from beesup_llm.model import BaseModelWrap
+# from beesup_llm.dataset import BaseDataset
+# from beesup_llm.training import BaseTraining
+# from beesup_llm.inference import BaseTest
+# from beesup_llm.model import BaseModelWrap
 #from beesup_llm.evaluation import BaseEvaluation
 
 import logging
@@ -70,31 +70,63 @@ Total number of subdirectories: {dir_count}
 Total size of files: {total_size_mb:.2f} MB
         """.strip()
 
-
 class BaseDirectory(object):
     """
     Base class for subdirectories inside a lab
     """
-    # def __new__(cls, ref=None, **kwargs):
+    def __new__(cls, ref=None, skip_new=False, **kwargs):
 
-    #     the_type=extract_type(ref)
-    #     if (cls is BaseDirectory) and (the_type is not None):
+        if skip_new:
+            print('skip_new')
+            return super().__new__(cls)
 
-    #         if the_type == 'dataset': return BaseDataset(ref)
-    #         elif the_type == 'training': return BaseTraining(ref)
-    #         elif the_type == 'test': return BaseTest(ref)
-    #         elif the_type == 'model': return BaseModelWrap(ref)
+        if is_valid_config(ref):
+            print('valid config')
+            config = ref
 
-    #     return super().__new__(cls)
+        else: 
+            print('not valid config')
+            if 'type' not in kwargs: kwargs['type']='directory'
+            config=get_config_from_ref(ref, **kwargs)
 
-    def __init__(self, ref=None):
+        if (cls is BaseDirectory):
+
+            if config['type'] == 'dataset':
+                from beesup_llm.dataset import BaseDataset
+                return BaseDataset(config)
+            
+            elif config['type'] == 'training': 
+                from beesup_llm.training import BaseTraining
+                return BaseTraining(config)
+
+            elif config['type'] == 'test': 
+                from beesup_llm.inference import BaseTest
+                return BaseTest(config)
+            
+            elif config['type'] == 'model': 
+                from beesup_llm.model import BaseModelWrap
+                return BaseModelWrap(config)
+        
+        return super().__new__(cls)
+
+    
+    def __init__(self, ref=None, **kwargs):
+        self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+        self._config_keys_to_exclude=['logger']
+
+        if is_valid_config(ref): self.update_attributes(ref,overwrite=True)
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"{self.name.upper()} initialised")
+
+    def legacy__init__(self, ref=None):
 
         self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
         self._config_keys_to_exclude=['logger']
 
         if getattr(self, '_ref', None) is not None:
             ref=self._ref; del self._ref
-
+        
         if not hasattr(self, 'type'): self.type = 'directory'
 
         if isinstance(ref, int): self.__init__from_id(ref)
@@ -122,46 +154,6 @@ class BaseDirectory(object):
 
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"{self.name.upper()} initialised")
-
-    @staticmethod
-    def get_config_from_id(id,**kwargs)
-        assert 'type' in kwargs, "missing type key"
-
-        type=kwargs['type']
-        parent_lab_path=extract_lab_path(os.getcwd()),
-        parent_dir_path=f'{parent_lab_path}/{type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
-        assert os.path.exists(f'{parent_dir_path}'), f"parent directory {parent_dir_path} does not exist"
-
-        config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{type}/config.yaml")
-        return config_dict
-
-
-
-    @staticmethod
-    def get_config_from_path(path,**kwargs):
-
-        if not path.endswith('config.yaml'): 
-            path=f"{path}/config.yaml"
-
-        assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
-        config_dict=load_dict(path)
-        return config_dict
-
-
-    @staticmethod
-    def get_config_from_ref(ref,**kwargs):
-
-        if 'type' not in kwargs: type = 'directory'
-
-        if isinstance(ref, int): self.get_config_from_id(ref)
-
-        elif isinstance(ref, str): self.__init__from_path(ref)
-
-        elif isinstance(ref, dict): self.__init__from_config(ref)
-
-        elif hasattr(ref, 'get_config'): self.__init__from_config(ref.get_config())
-
-
 
     def __init__from_config(self,config):
         for k, v in config.items(): 
@@ -198,15 +190,15 @@ class BaseDirectory(object):
         return
 
 
-    def get_max_id(self):
-        assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
+    # def get_max_id(self):
+    #     assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
 
-        max_id=0
+    #     max_id=0
 
-        id_list = get_ids(self.parent_dir_path)
-        if id_list: max_id = max(id_list)
+    #     id_list = get_ids(self.parent_dir_path)
+    #     if id_list: max_id = max(id_list)
 
-        return max_id
+    #     return max_id
 
     def get_config(self):
 

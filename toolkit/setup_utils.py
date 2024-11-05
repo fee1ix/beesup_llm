@@ -67,7 +67,6 @@ def extract_type(input_obj):
     return the_type
 
 
-
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
         # Check if both original[key] and value are dictionaries
@@ -82,6 +81,20 @@ def update_nested_dict(original, updates, overwrite=True):
             original[key] = value
 
     return original
+
+
+
+
+def setattr_or_key(obj, key, val):
+    #global obj
+
+    if isinstance(obj, dict):
+        obj[key] = val
+    
+    else:
+        setattr(obj,key,val)
+
+
 
 
 def hasattr_or_key(obj, key):
@@ -100,7 +113,6 @@ def getattr_or_key(obj, key, val=None):
     val = getattr(obj, key, val)
 
     return val
-
 
 def filter_attributes(
         input_obj,
@@ -155,3 +167,82 @@ def filter_attributes(
 
 #             attributes_dict.update(filter_attributes(vars(cls), **kwargs))
 
+import pytz
+import datetime
+TIMEZONE = pytz.timezone('Europe/Berlin')
+
+def is_valid_config(config):
+    if not isinstance(config, dict): return False
+    if 'type' not in config: return False
+    if 'id' not in config: return False
+    if 'path' not in config: return False
+    if 'name' not in config: return False
+    if 'datetime_init' not in config: return False
+    return True
+
+def get_config_from_id(id, **kwargs):
+    assert 'type' in kwargs, "missing type key"
+    type = kwargs['type']
+    parent_lab_path = extract_lab_path(os.getcwd())
+    parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+    assert os.path.exists(f'{parent_dir_path}'), f"parent directory {parent_dir_path} does not exist"
+    config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{type}/config.yaml")
+    return config_dict
+
+def get_config_from_path(path, **kwargs):
+    if not path.endswith('config.yaml'):
+        path = f"{path}/config.yaml"
+    assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
+    config = load_dict(path)
+    return config
+
+def get_config_from_dict(the_dict, **kwargs):
+    return the_dict
+
+def get_config_from_obj(obj, **kwargs):
+    return obj.get_config()
+
+def get_max_id(parent_dir_path):
+    max_id = 0
+    id_list = get_ids(parent_dir_path)
+    if id_list: max_id = max(id_list)
+    return max_id
+
+def get_config_from_none(type='directory'):
+    parent_lab_path = extract_lab_path(os.getcwd())
+    parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+    if not os.path.exists(f'{parent_dir_path}'):
+        os.makedirs(f'{parent_dir_path}', exist_ok=False)
+    id = get_max_id(parent_dir_path) + 1
+    name = f"{str(id).zfill(4)}_{type}"
+    return dict(
+        type=type,
+        id=id,
+        name=name,
+        path=f"{parent_dir_path}/{name}",
+        datetime_init=datetime.datetime.now(TIMEZONE),
+        parent_lab_path=parent_lab_path,
+        parent_dir_path=parent_dir_path
+    )
+
+def get_config_from_model(model):
+    config=get_config_from_none(type='model')
+    config['name_or_path']=model.name_or_path
+    return config
+
+
+def get_config_from_ref(ref, **kwargs):
+    if ref is None:
+        return get_config_from_none(**kwargs)
+    if isinstance(ref, int):
+        return get_config_from_id(ref, **kwargs)
+    elif isinstance(ref, str):
+        return get_config_from_path(ref, **kwargs)
+    elif isinstance(ref, dict):
+        return get_config_from_dict(ref, **kwargs)
+    elif hasattr(ref, 'get_config'):
+        return get_config_from_obj(ref, **kwargs)
+    else:
+        import torch
+        if isinstance(ref, torch.nn.Module):
+            return get_config_from_model(ref)
