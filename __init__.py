@@ -70,12 +70,17 @@ Total number of subdirectories: {dir_count}
 Total size of files: {total_size_mb:.2f} MB
         """.strip()
 
+
 class BaseDirectory(object):
     """
     Base class for subdirectories inside a lab
-
-
     """
+
+    type = 'directory'
+    _config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+    _config_keys_to_exclude=['logger']
+    logger = logging.getLogger(__name__)
+
     def __new__supressed(cls, ref=None, skip_new=False, **kwargs):
 
         if skip_new:
@@ -120,84 +125,89 @@ class BaseDirectory(object):
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"{self.name.upper()} initialised")
 
-    def __init__(self, ref=None):
 
-        if not hasattr(self, 'type'): self.type='directory'
-
-        self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
-        self._config_keys_to_exclude=['logger']
+    def __init__legacy(self, ref=None, **kwargs):
 
         if getattr(self, '_ref', None) is not None:
             ref=self._ref; del self._ref
         
         self.__init__from_ref(ref)
         
-        self.logger = logging.getLogger(__name__)
         self.logger.info(f"{self.name.upper()} initialised")
 
-    def __init__from_id(self,id):
-        assert hasattr(self, 'type'), "missing type key"
+    # def __init__from_id(self,id):
+    #     assert hasattr(self, 'type'), "missing type key"
 
-        self.parent_lab_path=extract_lab_path(os.getcwd())
-        self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
+    #     self.parent_lab_path=extract_lab_path(os.getcwd())
+    #     self.parent_dir_path=f'{self.parent_lab_path}/{self.type}s' # derive the parent directory path from the type (e.g. dataset -> datasets)
         
-        assert os.path.exists(f'{self.parent_dir_path}'), f"parent directory {self.parent_dir_path} does not exist"
+    #     assert os.path.exists(f'{self.parent_dir_path}'), f"parent directory {self.parent_dir_path} does not exist"
 
-        config_dict = load_dict(f"{self.parent_dir_path}/{str(id).zfill(4)}_{self.type}/config.yaml")
-        self.__init__from_config_dict(config_dict)
+    #     config_dict = load_dict(f"{self.parent_dir_path}/{str(id).zfill(4)}_{self.type}/config.yaml")
+    #     self.__init__from_config_dict(config_dict)
 
-    def __init__from_path(self, path):
+    # def __init__from_path(self, path):
 
-        if not path.endswith('config.yaml'): 
-            path=f"{path}/config.yaml"
+    #     if not path.endswith('config.yaml'): 
+    #         path=f"{path}/config.yaml"
 
-        assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
-        config_dict = load_dict(path)
+    #     assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
+    #     config_dict = load_dict(path)
 
-        self.__init__from_config_dict(config_dict)
+    #     self.__init__from_config_dict(config_dict)
 
-    def __init__from_dict(self, the_dict):
+    # def __init__from_dict(self, the_dict):
 
-        if not is_valid_config(the_dict): raise ValueError("Invalid config dictionary")
+    #     if not is_valid_config(the_dict): raise ValueError("Invalid config dictionary")
 
-        self.__init__from_config_dict(the_dict)
+    #     self.__init__from_config_dict(the_dict)
 
-    def __init__from_config_dict(self,config_dict):
+    # def __init__from_config_dict(self,config_dict):
 
-        self.update_attributes(config_dict, overwrite=True)
+    #     self.update_attributes(config_dict, overwrite=True)
 
-        # for k, v in config_dict.items(): 
-        #     if (v is not None) and (not hasattr(self, k)):
-        #         setattr(self, k, v)
+    #     # for k, v in config_dict.items(): 
+    #     #     if (v is not None) and (not hasattr(self, k)):
+    #     #         setattr(self, k, v)
 
-    def __init__from_none(self):
+    # def __init__from_none(self):
 
-        self.parent_lab_path = extract_lab_path(os.getcwd())
-        self.parent_dir_path = f'{self.parent_lab_path}/{self.type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
-        if not os.path.exists(f'{self.parent_dir_path}'):
-            os.makedirs(f'{self.parent_dir_path}', exist_ok=False)
+    #     self.parent_lab_path = extract_lab_path(os.getcwd())
+    #     self.parent_dir_path = f'{self.parent_lab_path}/{self.type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+    #     if not os.path.exists(f'{self.parent_dir_path}'):
+    #         os.makedirs(f'{self.parent_dir_path}', exist_ok=False)
 
-        self.id = get_max_id(self.parent_dir_path) + 1
-        self.name = f"{str(self.id).zfill(4)}_{self.type}"
-        self.path = f"{self.parent_dir_path}/{self.name}"
+    #     self.id = get_max_id(self.parent_dir_path) + 1
+    #     self.name = f"{str(self.id).zfill(4)}_{self.type}"
+    #     self.path = f"{self.parent_dir_path}/{self.name}"
 
-        self.datetime_init = get_datetime()
+    #     self.datetime_init = get_datetime()
     
-    def __init__from_ref(self, ref):
+    # def __init__from_ref(self, ref):
 
-        if not hasattr(self, 'type'): raise ValueError("type must be defined")
+    #     if not hasattr(self, 'type'): raise ValueError("type must be defined")
 
-        if isinstance(ref, int): self.__init__from_id(ref)
+    #     if isinstance(ref, int): self.__init__from_id(ref)
 
-        elif isinstance(ref, str): self.__init__from_path(ref)
+    #     elif isinstance(ref, str): self.__init__from_path(ref)
 
-        elif isinstance(ref, dict): self.__init__from_dict(ref)
+    #     elif isinstance(ref, dict): self.__init__from_dict(ref)
         
-        elif hasattr(ref, 'get_config'): self.__init__from_config_dict(ref.get_config())
+    #     elif hasattr(ref, 'get_config'): self.__init__from_config_dict(ref.get_config())
 
-        elif ref is None: self.__init__from_none()
+    #     #elif ref is None: self.__init__from_none()
 
-        
+    #     else: self.__init__from_none()
+
+
+    def __init__(self, ref=None, **kwargs):
+
+        kwargs.update(self.get_config())
+        config_dict=get_config_from_ref(ref,**kwargs)
+        self.update_attributes(config_dict, overwrite=True)
+        self.logger.info(f"{self.name.upper()} initialised")
+
+
     def update_attributes(self, new_dict, overwrite=True):
         updated_config = update_nested_dict(self.get_config(), new_dict, overwrite)
 
@@ -205,7 +215,6 @@ class BaseDirectory(object):
             setattr(self, k, v)
         
         return
-
 
     def get_max_id(self):
         assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
