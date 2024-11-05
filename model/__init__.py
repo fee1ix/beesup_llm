@@ -67,25 +67,6 @@ class BaseModelWrap(BaseDirectory):
         self._default_config=dict()
         self.update_attributes(self._default_config, overwrite=False)
     
-    def __preinit__from_model(self, model):
-        self.name_or_path=model.name_or_path
-        self.model=model
-
-
-
-    def load_model(self):
-
-        self.model=AutoModelForCausalLM.from_pretrained(
-            self.name_or_path,
-            device_map="auto",
-            quantization_config=BitsAndBytesConfig(
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                **self.bnb_config
-                ),
-        )
-
-        return
-    
     def get_model(self):
 
         model=getattr(self, 'model', None)
@@ -114,7 +95,6 @@ class GenModelWrap(BaseModelWrap):
 
     def __new__(cls, ref=None, skip_new=False, **kwargs):
         kwargs.update(get_cls_attrs(cls))
-        print(kwargs)
 
         if skip_new: return super().__new__(cls)
         if cls is not GenModelWrap: return super().__new__(cls)
@@ -159,6 +139,19 @@ class GenModelWrap(BaseModelWrap):
         )
         
         self.update_attributes(self._default_config, overwrite=False)
+
+    def load_model(self):
+
+        self.model=AutoModelForCausalLM.from_pretrained(
+            self.name_or_path,
+            device_map="auto",
+            quantization_config=BitsAndBytesConfig(
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                **self.bnb_config
+                ),
+        )
+
+        return
 
     def load_inference_tokenizer(self):
 
@@ -262,10 +255,8 @@ class GenModelWrap(BaseModelWrap):
             'all_losses': all_losses.get_arrays(),
         }
 
-
-
 class LlamaModelWrap(GenModelWrap):
-    type='gen_model'
+    #type='gen_model'
 
     @staticmethod
     def is_PeftLlamaModelWrap(ref):
@@ -331,10 +322,73 @@ class PeftLlamaModelWrap(LlamaModelWrap):
 
         return
 
-
-
+from transformers import AutoModel
 class EmbModelWrap(BaseModelWrap):
     type='emb_model'
+
+    @staticmethod
+    def is_JinaaiModelWrap(ref):
+        if getattr_or_key(ref, 'name_or_path') == 'jinaai/jina-embeddings-v3': return True
+        return False
+
+    def __new__(cls, ref=None, skip_new=False, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        if skip_new: return super().__new__(cls)
+        if cls is not EmbModelWrap: return super().__new__(cls)
+
+        pre_config=get_config_from_ref(ref,**kwargs)
+
+        if cls.is_JinaaiModelWrap(pre_config): return JinaaiModelWrap(pre_config,**kwargs)
+
+        return EmbModelWrap(pre_config, skip_new=True, **kwargs)
+
+
+    def __init__(self, ref=None, **kwargs):
+        super().__init__(ref)
+
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend([])
+
+        self._default_config=dict(
+            trust_remote_code=True,
+            use_flash_attn=False,
+            task='separation',
+        )
+
+        self.update_attributes(self._default_config, overwrite=False)
+    
+    def load_model(self):
+
+        self.model=AutoModel.from_pretrained(
+            self.name_or_path,
+            trust_remote_code=self.trust_remote_code,
+            use_flash_attn=self.use_flash_attn,
+            ).to('cuda')
+        
+    
+    def encode(self, chunks):
+
+        embs=self.model.encode(
+            chunks,
+            task=self.task,
+        )
+
+        return embs
+
+
+
+class JinaaiModelWrap(EmbModelWrap):
+
+    def __init__(self, ref=None, **kwargs):
+        super().__init__(ref)
+
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend([])
+
+        self._default_config=dict(
+            name_or_path='jinaai/jina-embeddings-v3',
+        )
+        self.update_attributes(self._default_config, overwrite=False)
 
 
 # class JinaiModelWrap(BaseModelWrap):
