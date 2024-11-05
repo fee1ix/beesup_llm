@@ -97,7 +97,6 @@ def setattr_or_key(obj, key, val):
     else:
         setattr(obj,key,val)
 
-
 def hasattr_or_key(obj, key):
     # Check if it's a dictionary and contains the key
     if isinstance(obj, dict):
@@ -156,7 +155,8 @@ def filter_attributes(
 
     return filtered_dict
 
-
+def get_cls_attrs(cls):
+    return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value)}
 
 import pytz
 import datetime
@@ -174,22 +174,9 @@ def is_valid_config(config):
 
     return True
 
-
-
-
-
-def is_valid_config(config):
-    if not isinstance(config, dict): return False
-    if 'type' not in config: return False
-    if 'id' not in config: return False
-    if 'path' not in config: return False
-    if 'name' not in config: return False
-    if 'datetime_init' not in config: return False
-    return True
-
 def get_config_from_id(id, **kwargs):
-    assert 'type' in kwargs, "missing type key"
-    type = kwargs['type']
+    assert 'type' in kwargs, "missing type"; type = kwargs.get('type')
+
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
     assert os.path.exists(f'{parent_dir_path}'), f"parent directory {parent_dir_path} does not exist"
@@ -200,24 +187,27 @@ def get_config_from_path(path, **kwargs):
     if not path.endswith('config.yaml'):
         path = f"{path}/config.yaml"
     assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
-    config = load_dict(path)
-    return config
+    config_dict = load_dict(path)
+    return config_dict
 
 def get_config_from_dict(the_dict, **kwargs):
+    the_dict.update(kwargs)
     return the_dict
 
 def get_config_from_obj(obj, **kwargs):
+    assert hasattr(obj, 'get_config'), "object must have a 'get_config' method"
     return obj.get_config()
 
+def get_config_from_none(**kwargs):
+    assert 'type' in kwargs, "missing type"; type = kwargs.get('type')
 
-
-def get_config_from_none(type='directory'):
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
     if not os.path.exists(f'{parent_dir_path}'):
         os.makedirs(f'{parent_dir_path}', exist_ok=False)
     id = get_max_id(parent_dir_path) + 1
     name = f"{str(id).zfill(4)}_{type}"
+
     return dict(
         type=type,
         id=id,
@@ -228,13 +218,19 @@ def get_config_from_none(type='directory'):
         parent_dir_path=parent_dir_path
     )
 
-def get_config_from_model(model):
-    config=get_config_from_none(type='model')
-    config['name_or_path']=model.name_or_path
-    return config
+def get_config_from_model(model,**kwargs):
+
+    config_dict=get_config_from_none(**kwargs)
+    config_dict.update(
+        name_or_path=getattr_or_key(model, 'name_or_path'),
+        model=model
+    )
+
+    return config_dict
 
 
 def get_config_from_ref(ref, **kwargs):
+
     if ref is None:
         return get_config_from_none(**kwargs)
     if isinstance(ref, int):
@@ -248,4 +244,4 @@ def get_config_from_ref(ref, **kwargs):
     else:
         import torch
         if isinstance(ref, torch.nn.Module):
-            return get_config_from_model(ref)
+            return get_config_from_model(ref,**kwargs)
