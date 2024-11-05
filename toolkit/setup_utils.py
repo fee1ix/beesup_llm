@@ -27,6 +27,12 @@ def get_ids(parent_path=None, type='', from_id=0, to_id=10e9):
 
     return ids
 
+def get_max_id(path):
+    max_id = 0
+    id_list = get_ids(path)
+    if id_list: max_id = max(id_list)
+    return max_id
+
 def set_config(config):
     with open(f'{config["path"]}/config.yaml', 'w') as file:
         yaml.dump(config, file, sort_keys=False, default_flow_style=False)
@@ -66,7 +72,6 @@ def extract_type(input_obj):
 
     return the_type
 
-
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
         # Check if both original[key] and value are dictionaries
@@ -83,8 +88,6 @@ def update_nested_dict(original, updates, overwrite=True):
     return original
 
 
-
-
 def setattr_or_key(obj, key, val):
     #global obj
 
@@ -93,8 +96,6 @@ def setattr_or_key(obj, key, val):
     
     else:
         setattr(obj,key,val)
-
-
 
 
 def hasattr_or_key(obj, key):
@@ -155,21 +156,27 @@ def filter_attributes(
 
     return filtered_dict
 
-# def gather_attributes(input_obj,**kwargs):
 
-#     attributes_dict=filter_attributes(input_obj, **kwargs)
-
-#     if hasattr(input_obj,'__class__'):
-
-#         for cls in input_obj.__class__.__mro__:
-
-#             if not hasattr(cls, '__dict__'): continue
-
-#             attributes_dict.update(filter_attributes(vars(cls), **kwargs))
 
 import pytz
 import datetime
 TIMEZONE = pytz.timezone('Europe/Berlin')
+
+def get_datetime():
+    return datetime.datetime.now(TIMEZONE)
+
+def is_valid_config(config):
+    if getattr_or_key(config, 'type') is None: return False
+    if getattr_or_key(config, 'id') is None: return False
+    if getattr_or_key(config, 'path') is None: return False
+    if getattr_or_key(config, 'name') is None: return False
+    if getattr_or_key(config, 'datetime_init') is None: return False
+
+    return True
+
+
+
+
 
 def is_valid_config(config):
     if not isinstance(config, dict): return False
@@ -202,11 +209,7 @@ def get_config_from_dict(the_dict, **kwargs):
 def get_config_from_obj(obj, **kwargs):
     return obj.get_config()
 
-def get_max_id(parent_dir_path):
-    max_id = 0
-    id_list = get_ids(parent_dir_path)
-    if id_list: max_id = max(id_list)
-    return max_id
+
 
 def get_config_from_none(type='directory'):
     parent_lab_path = extract_lab_path(os.getcwd())
