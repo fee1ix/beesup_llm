@@ -10,55 +10,127 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 class BaseModelWrap(BaseDirectory):
 
+    type='model'
+
+    @staticmethod
+    def get_subconfig(ref):
+
+        gen_model=getattr_or_key(ref,'gen_model_config',False)
+        emb_model=getattr_or_key(ref,'emb_model_config',False)
+
+        if gen_model and emb_model: raise ValueError("Both gen_model and emb_model are present in the config.")
+        if gen_model: return gen_model
+        if emb_model: return emb_model
+        else: return None
+            
+    @staticmethod
+    def is_GenModelWrap(ref):
+        if getattr_or_key(ref, 'type') == 'gen_model': return True
+
+        if getattr_or_key(ref, 'name_or_path') in [
+            'meta-llama/Meta-Llama-3.1-8B-Instruct',
+            'mistralai/Mistral-7B-Instruct-v0.2',
+            ]: return True
+
+        return False
+    
+    @staticmethod
+    def is_EmbModelWrap(ref):
+        if getattr_or_key(ref, 'type') == 'emb_model': return True
+
+        if getattr_or_key(ref, 'name_or_path') in [
+            'jinaai/jina-embeddings-v3',
+            ]: return True
+
+        return False
+
+    
     def __new__(cls, ref=None, skip_new=False, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        if skip_new: return super().__new__(cls)
+        if cls is not BaseModelWrap: return super().__new__(cls)
+        if cls.get_subconfig(ref) is not None: return BaseModelWrap(cls.get_subconfig(ref), skip_new=True, **kwargs)
+
+        pre_config=get_config_from_ref(ref,**kwargs)
+        
+        if cls.is_GenModelWrap(pre_config): return GenModelWrap(pre_config, **kwargs)
+        if cls.is_EmbModelWrap(pre_config): return EmbModelWrap(pre_config, **kwargs)
+
+        return BaseModelWrap(pre_config, skip_new=True, **kwargs)
+    
+    def __init__(self, ref=None, **kwargs):
+
+        super().__init__(ref, **kwargs)
+        self._config_key_order.extend(['name_or_path'])
+        self._config_keys_to_exclude.extend(['model'])
+
+        self._default_config=dict()
+        self.update_attributes(self._default_config, overwrite=False)
+    
+    def __preinit__from_model(self, model):
+        self.name_or_path=model.name_or_path
+        self.model=model
+
+
+
+    def load_model(self):
+
+        self.model=AutoModelForCausalLM.from_pretrained(
+            self.name_or_path,
+            device_map="auto",
+            quantization_config=BitsAndBytesConfig(
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                **self.bnb_config
+                ),
+        )
+
+        return
+    
+    def get_model(self):
+
+        model=getattr(self, 'model', None)
+        if model is None:
+            self.load_model()
+            model=self.model
+            del self.model
+            return model
+        
+        else:
+            return self.model
+
+
+# class BaseLlmWrap(BaseModelWrap):
+
+# class BaseEmbWrap(BaseModelWrap):
+
+class GenModelWrap(BaseModelWrap):
+
+    type='gen_model'
+  
+    @staticmethod
+    def is_LlamaModelWrap(ref):
+        if getattr_or_key(ref, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct': return True
+        return False
+
+    def __new__(cls, ref=None, skip_new=False, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        print(kwargs)
 
         if skip_new: return super().__new__(cls)
+        if cls is not GenModelWrap: return super().__new__(cls)
 
-        if hasattr_or_key(ref, 'model_config'):
-            ref = getattr_or_key(ref,'model_config')
-
-        if is_valid_config(ref):
-            config = ref
-
-        else:
-            if 'type' not in kwargs: kwargs['type']='model'
-            config=get_config_from_ref(ref, **kwargs)
+        pre_config=get_config_from_ref(ref,**kwargs)
         
+        if cls.is_LlamaModelWrap(pre_config): return LlamaModelWrap(pre_config)
 
-        config=get_config_from_ref(ref, **kwargs)
+        return GenModelWrap(pre_config, skip_new=True, **kwargs)
 
-        if (cls is BaseModelWrap):
 
-            if getattr_or_key(config, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-                #from beesup_llm.dataset import BaseDataset
-                return LlamaModelWrap(config, skip_new=True, **kwargs)
-        
-        return BaseModelWrap(config, skip_new=True)
-        
+    def __init__(self, ref=None, **kwargs):
 
-        # _ref=None
-        # if hasattr_or_key(ref, 'model_config'):
-        #     ref = getattr_or_key(ref,'model_config')
-        #     base_instance._ref = ref
-        
-        # if getattr_or_key(base_instance, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct':
-        #     base_instance = super(BaseModelWrap,LlamaModelWrap).__new__(LlamaModelWrap)
-                      
-        # # else:
-        # #     instance = super().__new__(cls)
-        
-        # return base_instance
-
-    def __init__(self, ref=None):
-
-        self.type='model'
-        if isinstance(ref, torch.nn.Module):
-            self.model=ref
-
-        super().__init__(ref)
-
+        super().__init__(ref, **kwargs)
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['model','inference_tokenizer','training_tokenizer'])
+        self._config_keys_to_exclude.extend(['inference_tokenizer','training_tokenizer'])
 
         self._default_config=dict(
             bnb_config=dict(
@@ -87,31 +159,6 @@ class BaseModelWrap(BaseDirectory):
         )
         
         self.update_attributes(self._default_config, overwrite=False)
-
-    def load_model(self):
-
-        self.model=AutoModelForCausalLM.from_pretrained(
-            self.name_or_path,
-            device_map="auto",
-            quantization_config=BitsAndBytesConfig(
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                **self.bnb_config
-                ),
-        )
-
-        return
-    
-    def get_model(self):
-
-        model=getattr(self, 'model', None)
-        if model is None:
-            self.load_model()
-            model=self.model
-            del self.model
-            return model
-        
-        else:
-            return self.model
 
     def load_inference_tokenizer(self):
 
@@ -155,7 +202,6 @@ class BaseModelWrap(BaseDirectory):
         else:
             return self.training_tokenizer
             
-
     def inference_step(self,inputs,**kwargs):
 
         generation_config=GenerationConfig.from_dict(self.generation_config)
@@ -217,7 +263,26 @@ class BaseModelWrap(BaseDirectory):
         }
 
 
-class LlamaModelWrap(BaseModelWrap):
+
+class LlamaModelWrap(GenModelWrap):
+    type='gen_model'
+
+    @staticmethod
+    def is_PeftLlamaModelWrap(ref):
+        return False
+
+    def __new__(cls, ref=None, skip_new=False, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        print(kwargs)
+
+        if skip_new: return super().__new__(cls)
+        if cls is not LlamaModelWrap: return super().__new__(cls)
+
+        pre_config=get_config_from_ref(ref,**kwargs)
+        
+        if cls.is_PeftLlamaModelWrap(pre_config): return PeftLlamaModelWrap(pre_config)
+
+        return LlamaModelWrap(pre_config, skip_new=True, **kwargs)
 
     def __init__(self, ref=None, **kwargs):
         super().__init__(ref)
@@ -247,13 +312,11 @@ class LlamaModelWrap(BaseModelWrap):
         
         self.update_attributes(self._default_config, overwrite=False)
 
-
 from peft import AutoPeftModelForCausalLM
 class PeftLlamaModelWrap(LlamaModelWrap):
 
     def __init__(self, ref=None, **kwargs):
         super().__init__(ref)
-
 
     def load_model(self):
 
@@ -267,6 +330,22 @@ class PeftLlamaModelWrap(LlamaModelWrap):
         )
 
         return
+
+
+
+class EmbModelWrap(BaseModelWrap):
+    type='emb_model'
+
+
+# class JinaiModelWrap(BaseModelWrap):
+
+#     def __init__(self, ref=None, **kwargs):
+#         super().__init__(ref)
+
+#         self._config_key_order.extend([])
+#         self._config_keys_to_exclude.extend([])
+
+
 
 
 
