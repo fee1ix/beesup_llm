@@ -44,22 +44,36 @@ class BaseModelWrap(BaseDirectory):
 
         return False
 
-    
-    def __new__(cls, ref=None, skip_new=False, **kwargs):
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
         kwargs.update(get_cls_attrs(cls))
-        if skip_new: return super().__new__(cls)
-        if cls is not BaseModelWrap: return super().__new__(cls)
-        if cls.get_subconfig(ref) is not None: return BaseModelWrap(cls.get_subconfig(ref), skip_new=True, **kwargs)
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
 
-        pre_config=get_config_from_ref(ref,**kwargs)
+        pre_config = get_config_from_ref(ref, **kwargs)
+
+        if cls.is_GenModelWrap(pre_config):
+            return GenModelWrap(ref=pre_config, **kwargs)
+        if cls.is_EmbModelWrap(pre_config):
+            return EmbModelWrap.from_ref(ref=pre_config, **kwargs)
+
+        return cls(ref=pre_config, **kwargs)
+
+    # def __new__(cls, ref=None, skip_new=False, **kwargs):
+    #     kwargs.update(get_cls_attrs(cls))
+    #     cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+    #     if skip_new: return super().__new__(cls)
+    #     if cls is not BaseModelWrap: return super().__new__(cls)
+    #     if cls.get_subconfig(ref) is not None: return BaseModelWrap(cls.get_subconfig(ref), skip_new=True, **kwargs)
+
+    #     pre_config=get_config_from_ref(ref,**kwargs)
         
-        if cls.is_GenModelWrap(pre_config): return GenModelWrap(pre_config, **kwargs)
-        if cls.is_EmbModelWrap(pre_config): return EmbModelWrap(pre_config, **kwargs)
+    #     if cls.is_GenModelWrap(pre_config): return GenModelWrap(pre_config, **kwargs)
+    #     if cls.is_EmbModelWrap(pre_config): return EmbModelWrap(pre_config, **kwargs)
 
-        return BaseModelWrap(pre_config, skip_new=True, **kwargs)
+    #     return BaseModelWrap(pre_config, skip_new=True, **kwargs)
     
     def __init__(self, ref=None, **kwargs):
-
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
         super().__init__(ref, **kwargs)
         self._config_key_order.extend(['name_or_path'])
         self._config_keys_to_exclude.extend(['model'])
@@ -327,24 +341,43 @@ class EmbModelWrap(BaseModelWrap):
     type='emb_model'
 
     @staticmethod
-    def is_JinaaiModelWrap(ref):
-        if getattr_or_key(ref, 'name_or_path') == 'jinaai/jina-embeddings-v3': return True
+    def matches(ref):
+        if getattr_or_key(ref, 'type') == 'emb_model': return True
+        if JinaaiModelWrap.matches(ref): return True
         return False
-
-    def __new__(cls, ref=None, skip_new=False, **kwargs):
+    
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
         kwargs.update(get_cls_attrs(cls))
-        if skip_new: return super().__new__(cls)
-        if cls is not EmbModelWrap: return super().__new__(cls)
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
 
-        pre_config=get_config_from_ref(ref,**kwargs)
+        pre_config = get_config_from_ref(ref, **kwargs)
 
-        if cls.is_JinaaiModelWrap(pre_config): return JinaaiModelWrap(pre_config,**kwargs)
+        if JinaaiModelWrap.matches(pre_config):
+            cls.logger.debug(f"It's a JinaaiModelWrap!")
+            return JinaaiModelWrap(ref=pre_config, **kwargs)
 
-        return EmbModelWrap(pre_config, skip_new=True, **kwargs)
+        return cls(ref=pre_config, **kwargs)
+
+
+    # def __new__(cls, ref=None, skip_new=False, **kwargs):
+    #     kwargs.update(get_cls_attrs(cls))
+    #     cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+    #     if skip_new: return super().__new__(cls)
+    #     if cls is not EmbModelWrap: return super().__new__(cls)
+
+    #     pre_config=get_config_from_ref(ref,**kwargs)
+
+    #     if cls.is_JinaaiModelWrap(pre_config):
+    #         cls.logger.debug(f"it's a JinaaiModelWrap!")
+    #         return JinaaiModelWrap(pre_config,**kwargs)
+
+    #     return EmbModelWrap(pre_config, skip_new=True, **kwargs)
 
 
     def __init__(self, ref=None, **kwargs):
-        super().__init__(ref)
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        super().__init__(ref,**kwargs)
 
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend([])
@@ -365,12 +398,33 @@ class EmbModelWrap(BaseModelWrap):
             use_flash_attn=self.use_flash_attn,
             ).to('cuda')
         
-    
-    def encode(self, chunks):
+    def unique_encode(self, chunks, **kwargs):
+
+        # Step 1: Remove redundancy by creating a set of unique chunks
+        unique_chunks = list(set(chunks))
+        
+        # Step 2: Encode each unique chunk
+        unique_embs = self.encode(unique_chunks, **kwargs)
+        
+        # Step 3: Create a mapping from each unique chunk to its embedding
+        emb_dict = dict(zip(unique_chunks, unique_embs))
+        
+        # Step 4: Map the embeddings back to the original chunk list
+        embs = [emb_dict[chunk] for chunk in chunks]
+
+        return embs
+
+    def encode(self, chunks, **kwargs):
+
+        encode_kwargs = dict(
+            task=self.task,
+        )
+        encode_kwargs.update(kwargs)
+
 
         embs=self.model.encode(
             chunks,
-            task=self.task,
+            **encode_kwargs
         )
 
         return embs
@@ -379,8 +433,14 @@ class EmbModelWrap(BaseModelWrap):
 
 class JinaaiModelWrap(EmbModelWrap):
 
+    @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'name_or_path') == 'jinaai/jina-embeddings-v3': return True
+        return False
+
     def __init__(self, ref=None, **kwargs):
-        super().__init__(ref)
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        super().__init__(ref, **kwargs)
 
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend([])
@@ -391,13 +451,6 @@ class JinaaiModelWrap(EmbModelWrap):
         self.update_attributes(self._default_config, overwrite=False)
 
 
-# class JinaiModelWrap(BaseModelWrap):
-
-#     def __init__(self, ref=None, **kwargs):
-#         super().__init__(ref)
-
-#         self._config_key_order.extend([])
-#         self._config_keys_to_exclude.extend([])
 
 
 
