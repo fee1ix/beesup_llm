@@ -13,6 +13,13 @@ class BaseModelWrap(BaseDirectory):
     type='model'
 
     @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'type') == ['model']: return True
+        if GenModelWrap.matches(ref): return True
+        if EmbModelWrap.matches(ref): return True
+        return False
+
+    @staticmethod
     def get_subconfig(ref):
 
         gen_model=getattr_or_key(ref,'gen_model_config',False)
@@ -23,27 +30,6 @@ class BaseModelWrap(BaseDirectory):
         if emb_model: return emb_model
         else: return None
             
-    @staticmethod
-    def is_GenModelWrap(ref):
-        if getattr_or_key(ref, 'type') == 'gen_model': return True
-
-        if getattr_or_key(ref, 'name_or_path') in [
-            'meta-llama/Meta-Llama-3.1-8B-Instruct',
-            'mistralai/Mistral-7B-Instruct-v0.2',
-            ]: return True
-
-        return False
-    
-    @staticmethod
-    def is_EmbModelWrap(ref):
-        if getattr_or_key(ref, 'type') == 'emb_model': return True
-
-        if getattr_or_key(ref, 'name_or_path') in [
-            'jinaai/jina-embeddings-v3',
-            ]: return True
-
-        return False
-
     @classmethod
     def from_ref(cls, ref=None, **kwargs):
         kwargs.update(get_cls_attrs(cls))
@@ -51,26 +37,13 @@ class BaseModelWrap(BaseDirectory):
 
         pre_config = get_config_from_ref(ref, **kwargs)
 
-        if cls.is_GenModelWrap(pre_config):
+        if GenModelWrap.matches(pre_config):
             return GenModelWrap(ref=pre_config, **kwargs)
-        if cls.is_EmbModelWrap(pre_config):
+        
+        if EmbModelWrap.matches(pre_config):
             return EmbModelWrap.from_ref(ref=pre_config, **kwargs)
 
         return cls(ref=pre_config, **kwargs)
-
-    # def __new__(cls, ref=None, skip_new=False, **kwargs):
-    #     kwargs.update(get_cls_attrs(cls))
-    #     cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
-    #     if skip_new: return super().__new__(cls)
-    #     if cls is not BaseModelWrap: return super().__new__(cls)
-    #     if cls.get_subconfig(ref) is not None: return BaseModelWrap(cls.get_subconfig(ref), skip_new=True, **kwargs)
-
-    #     pre_config=get_config_from_ref(ref,**kwargs)
-        
-    #     if cls.is_GenModelWrap(pre_config): return GenModelWrap(pre_config, **kwargs)
-    #     if cls.is_EmbModelWrap(pre_config): return EmbModelWrap(pre_config, **kwargs)
-
-    #     return BaseModelWrap(pre_config, skip_new=True, **kwargs)
     
     def __init__(self, ref=None, **kwargs):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
@@ -94,35 +67,24 @@ class BaseModelWrap(BaseDirectory):
             return self.model
 
 
-# class BaseLlmWrap(BaseModelWrap):
-
-# class BaseEmbWrap(BaseModelWrap):
 
 class GenModelWrap(BaseModelWrap):
 
     type='gen_model'
   
     @staticmethod
-    def is_LlamaModelWrap(ref):
-        if getattr_or_key(ref, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct': return True
+    def matches(ref):
+        if getattr_or_key(ref, 'type') == 'gen_model': return True
+
+        if PeftLlamaModelWrap.matches(ref): return True
+        if LlamaModelWrap.matches(ref): return True
         return False
 
-    def __new__(cls, ref=None, skip_new=False, **kwargs):
-        kwargs.update(get_cls_attrs(cls))
-
-        if skip_new: return super().__new__(cls)
-        if cls is not GenModelWrap: return super().__new__(cls)
-
-        pre_config=get_config_from_ref(ref,**kwargs)
-        
-        if cls.is_LlamaModelWrap(pre_config): return LlamaModelWrap(pre_config)
-
-        return GenModelWrap(pre_config, skip_new=True, **kwargs)
-
-
     def __init__(self, ref=None, **kwargs):
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
 
         super().__init__(ref, **kwargs)
+
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend(['inference_tokenizer','training_tokenizer'])
 
@@ -270,26 +232,14 @@ class GenModelWrap(BaseModelWrap):
         }
 
 class LlamaModelWrap(GenModelWrap):
-    #type='gen_model'
 
     @staticmethod
-    def is_PeftLlamaModelWrap(ref):
+    def matches(ref):
+        if getattr_or_key(ref, 'name_or_path') == 'meta-llama/Meta-Llama-3.1-8B-Instruct': return True
         return False
 
-    def __new__(cls, ref=None, skip_new=False, **kwargs):
-        kwargs.update(get_cls_attrs(cls))
-        print(kwargs)
-
-        if skip_new: return super().__new__(cls)
-        if cls is not LlamaModelWrap: return super().__new__(cls)
-
-        pre_config=get_config_from_ref(ref,**kwargs)
-        
-        if cls.is_PeftLlamaModelWrap(pre_config): return PeftLlamaModelWrap(pre_config)
-
-        return LlamaModelWrap(pre_config, skip_new=True, **kwargs)
-
     def __init__(self, ref=None, **kwargs):
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
         super().__init__(ref)
 
         self._config_key_order.extend(['name_or_path','base_model'])
@@ -319,6 +269,11 @@ class LlamaModelWrap(GenModelWrap):
 
 from peft import AutoPeftModelForCausalLM
 class PeftLlamaModelWrap(LlamaModelWrap):
+
+    @staticmethod
+    def matches(ref):
+        raise Warning("PeftLlamaModelWrap is not implemented yet.")
+        return False
 
     def __init__(self, ref=None, **kwargs):
         super().__init__(ref)
