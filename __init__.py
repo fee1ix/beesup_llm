@@ -73,12 +73,12 @@ Total size of files: {total_size_mb:.2f} MB
 
 class BaseDirectory(object):
     """
-    Base class for subdirectories inside a lab
+    Base class for all directories in the lab.
     """
 
     type = 'directory'
     _config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
-    _config_keys_to_exclude=['logger']
+    _config_keys_to_exclude=['logger','from_ref']
     logger = logging.getLogger(__name__)
 
     def __new__supressed(cls, ref=None, skip_new=False, **kwargs):
@@ -203,6 +203,8 @@ class BaseDirectory(object):
     def __init__(self, ref=None, **kwargs):
 
         kwargs.update(self.get_config())
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+
         config_dict=get_config_from_ref(ref,**kwargs)
         self.update_attributes(config_dict, overwrite=True)
         self.logger.info(f"{self.name.upper()} initialised")
