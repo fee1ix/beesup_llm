@@ -8,13 +8,12 @@ import logging
 
 
 class BaseDataset(BaseDirectory):
+    type='dataset'
 
-    def __init__(self, ref=None, dataset_df=None):
-
-        self.type='dataset'
+    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None):
         super().__init__(ref)
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['dataset_df'])
+        self._config_keys_to_exclude.extend(['dataset_df','emb_model'])
 
         if os.path.exists(f'{self.path}/dataset_df.pkl'):
             self.dataset_df=pd.read_pickle(f'{self.path}/dataset_df.pkl')
@@ -22,7 +21,17 @@ class BaseDataset(BaseDirectory):
 
         elif dataset_df is not None:
             self.dataset_df=dataset_df
+
+        if emb_model_ref is not None:
+            from beesup_llm.model import EmbModelWrap
+            self.emb_model_config=EmbModelWrap.from_ref(emb_model_ref).get_config()
         
+        if parent_ref is not None:
+            parent_config=BaseDataset(parent_ref).get_config()
+            if 'parent_config' in parent_config: del parent_config['parent_config']
+            self.parent_config=parent_config
+
+
     def spawn(self):
         assert hasattr(self, 'dataset_df'), "Dataset must be assigned before spawning"
         assert isinstance(self.dataset_df, pd.DataFrame), "Dataset must be a pandas DataFrame."
@@ -30,7 +39,8 @@ class BaseDataset(BaseDirectory):
         if not os.path.exists(f'{self.path}'):
             os.makedirs(f'{self.path}', exist_ok=False)
 
-        required_cols=['prompt','gold_completion','prompt_messages','gold_message']
+        required_cols=[]
+        #required_cols=['prompt','gold_completion','prompt_messages','gold_message']
 
         for required_col in required_cols:
             if required_col not in self.dataset_df.columns:
