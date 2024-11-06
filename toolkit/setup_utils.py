@@ -58,7 +58,6 @@ def extract_type_from_path(path):
     else:
         return None
 
-
 def extract_type(input_obj):
 
     the_type=None
@@ -86,7 +85,6 @@ def update_nested_dict(original, updates, overwrite=True):
             original[key] = value
 
     return original
-
 
 def setattr_or_key(obj, key, val):
     #global obj
@@ -156,7 +154,9 @@ def filter_attributes(
     return filtered_dict
 
 def get_cls_attrs(cls):
-    return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value)}
+    return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value) and not isinstance(value, classmethod)}
+
+
 
 import pytz
 import datetime
@@ -176,6 +176,8 @@ def is_valid_config(config):
 
 def get_config_from_id(id, **kwargs):
     assert 'type' in kwargs, "missing type"; type = kwargs.get('type')
+
+    logging.debug(f"get_config_from_id: {id}, kwargs: {kwargs}\n")
 
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
@@ -228,8 +230,11 @@ def get_config_from_model(model,**kwargs):
 
     return config_dict
 
+import logging
 
 def get_config_from_ref(ref, **kwargs):
+
+    logging.debug(f"get_config_from_ref: {ref}, kwargs: {kwargs}\n")
 
     if ref is None:
         return get_config_from_none(**kwargs)
