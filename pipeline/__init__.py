@@ -7,7 +7,7 @@ import pandas as pd
 class BasePipeline(BaseDirectory):
     type='pipeline'
 
-    def __init__(self, ref=None, dataset_ref=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, model_ref=None, **kwargs):
 
         super().__init__(ref, **kwargs)
         self._config_key_order.extend([])
@@ -24,6 +24,16 @@ class BasePipeline(BaseDirectory):
                 dataset=BaseDataset(dataset_ref)
                 self.dataset_config=dataset.get_config()
                 self.df=dataset.dataset_df
+
+        if model_ref is not None:
+            if isinstance(dataset_ref, pd.DataFrame):
+                self.df=dataset_ref
+
+            else:
+                dataset=BaseDataset(dataset_ref)
+                self.dataset_config=dataset.get_config()
+                self.df=dataset.dataset_df
+
 
 
     
