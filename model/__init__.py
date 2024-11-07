@@ -6,7 +6,7 @@ import logging
 import pandas as pd
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, GenerationConfig, set_seed
+
 
 class BaseModelWrap(BaseDirectory):
 
@@ -66,8 +66,9 @@ class BaseModelWrap(BaseDirectory):
         else:
             return self.model
 
-
-
+from threading import Thread
+from transformers import TextGenerationPipeline, TextIteratorStreamer
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, GenerationConfig, set_seed
 class GenModelWrap(BaseModelWrap):
 
     type='gen_model'
@@ -80,6 +81,21 @@ class GenModelWrap(BaseModelWrap):
         if LlamaModelWrap.matches(ref): return True
         return False
 
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+
+        pre_config = get_config_from_ref(ref, **kwargs)
+    
+        # if PeftLlamaModelWrap.matches(pre_config):
+        #     return PeftLlamaModelWrap.from_ref(ref=pre_config, **kwargs)
+
+        if LlamaModelWrap.matches(pre_config):
+            return LlamaModelWrap(ref=pre_config, **kwargs)
+        
+        return cls(ref=pre_config, **kwargs)
+    
     def __init__(self, ref=None, **kwargs):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
 
@@ -115,6 +131,73 @@ class GenModelWrap(BaseModelWrap):
         )
         
         self.update_attributes(self._default_config, overwrite=False)
+
+    def prepare_inference(self):
+
+        if not hasattr(self, 'model'): self.load_model()
+        if not hasattr(self, 'inference_tokenizer'): self.load_inference_tokenizer()
+
+    
+
+    def generate_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
+
+        if not hasattr(self, 'streamer'):
+            self.streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
+
+        if not hasattr(self, 'pipeline'):
+            self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
+        
+        pipeline_kwargs={
+            'text_inputs':input_text_or_messages,
+            'tokenizer':self.pipeline.tokenizer,
+            'generation_config':generation_config
+        }
+        
+        streamer_thread=Thread(target=self.pipeline, kwargs=pipeline_kwargs)
+
+        try:
+            streamer_thread.start()
+            pred_completion=""
+
+            for new_token in self.streamer:
+                pred_completion+=new_token
+                # extract_stream.pred_completion=pred_completion
+                # extract_stream.completion_tokens+=1
+                yield new_token
+
+            streamer_thread.join()
+        
+        except Exception as e:
+            self.logger.info(f'{e}')
+            streamer_thread.join()
+            torch.cuda.empty_cache()
+            self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
+
+    
+    #def generate(self,)
+
+
+    def __call__(self, input, generation_config=None, stream=True):
+
+        self.prepare_inference()
+
+        _generation_config = GenerationConfig.from_dict(self.generation_config)
+        _generation_config.update(**generation_config)
+        _generation_config.update(
+            return_dict_in_generate=False,
+            output_scores=False,
+            output_logits=False
+        )
+
+        if stream:
+            for new_token in self.generate_stream(input_text_or_messages=input_text, generation_config=_generation_config):
+                print(new_token,end='',flush=True)
+
+        
+
+        
+
+
 
     def load_model(self):
 
@@ -383,7 +466,6 @@ class EmbModelWrap(BaseModelWrap):
         )
 
         return embs
-
 
 
 class JinaaiModelWrap(EmbModelWrap):
