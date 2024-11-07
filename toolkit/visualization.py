@@ -60,3 +60,5 @@ def print_multicol(cols):
 </div>
 """
     display(HTML(html_content))
+
+

@@ -9,6 +9,10 @@ from beesup_llm.model import *
 
 from beesup_llm.pipeline.extraction_utils import *
 
+class ExtractionPipeline(BasePipeline):
+    
+
+
 
 class ExtractionEvalSample(object):
 
@@ -75,13 +79,12 @@ class ExtractionEvalSample(object):
         print_multicol(["<h4>Confusion</h4>","<h4>Confusion-Evaluation</h4>"])
         if include_conf:
             print_multicol([json.dumps(self.tab_conf_dict,indent=2),json.dumps(self.tab_eval_dict,indent=2)])
-
-        
+       
 class ExtractionEvalPipeline(BasePipeline):
 
     type='extraction_eval'
 
-    def __init__(self, ref=None, dataset_ref=None, gen_model_ref=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, **kwargs)
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend([])
@@ -89,14 +92,14 @@ class ExtractionEvalPipeline(BasePipeline):
         self._default_config=dict()
         self.update_attributes(self._default_config, overwrite=False)
 
-        if gen_model_ref is not None:
+        if model_ref is not None:
 
-            gen_model=BaseModelWrap.from_ref(gen_model_ref)
-            self.gen_model_config=gen_model.get_config()
-            self.tokenizer=gen_model.get_inference_tokenizer()
+            model=BaseModelWrap.from_ref(model_ref)
+            self.gen_model_config=model.get_config()
+            self.tokenizer=model.get_inference_tokenizer()
     
 
-    def evaluate(self):
+    #def evaluate(self):
 
         
 
