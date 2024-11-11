@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def get_inference_df(inference_outputs, tokenizer=None):
 
     inference_data=[]
