@@ -14,10 +14,15 @@ def get_different_colors(n):
     return ['rgb'+str(c) for c in colors]
 
 def assign_colors_list(cluster_ids):
+    cluster_ids = [cid if not np.isnan(cid) else -1.0 for cid in cluster_ids]
     unique_clusters = np.unique(cluster_ids)
     colors = get_different_colors(len(unique_clusters))
     random.shuffle(colors)
     cluster_colors = {cluster: color for cluster, color in zip(unique_clusters, colors)}
+
+    default_colors = {-1: 'rgb(114, 114, 114)'}
+    cluster_colors.update(default_colors)
+
     return [cluster_colors[cluster] for cluster in cluster_ids]
 
 from matplotlib.colors import hsv_to_rgb
@@ -60,5 +65,7 @@ def print_multicol(cols):
 </div>
 """
     display(HTML(html_content))
+
+
 
 
