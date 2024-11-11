@@ -56,25 +56,62 @@ def get_node_data(tree):
 
 def nodes_df_from_hdbscan(clusterer,chunks_df):
 
-    chunks_df['cluster_id']=clusterer.labels_
+    chunks_df['cid']=clusterer.labels_
 
     # Convert the condensed tree to a DataFrame
     nodes_df = clusterer.condensed_tree_.to_pandas()
     nodes_df = nodes_df.rename(columns={
         'parent':'parent_id',
-        'child':'child_id',
+        'child':'id',
         'child_size':'n_children',
     })
     nodes_df['is_leaf']=nodes_df.apply(lambda x: x['n_children']==1, axis=1)
 
-    nodes_df=nodes_df.sort_values(by=['n_children','child_id'], ascending=[True,True])
+    nodes_df=nodes_df.sort_values(by=['n_children','id'], ascending=[True,True])
 
     nodes_df['label']=nodes_df.apply(lambda x: f"CLUSTER WITH {x.n_children} MEMBERS", axis=1)
 
     nodes_df.loc[nodes_df['is_leaf'], 'label'] = chunks_df['label'].values
     nodes_df.loc[nodes_df['is_leaf'], 'emb'] = chunks_df['emb'].values
+    nodes_df.loc[nodes_df['is_leaf'], 'cid'] = chunks_df['cid'].values
 
     return nodes_df
+
+def add_parent_cids(nodes_df):
+    
+    for _,row in nodes_df[nodes_df.cid.isna()].iterrows():
+
+        selected_df=nodes_df[nodes_df.parent_id==row.id]
+
+        if selected_df.empty: continue
+        if selected_df.cid.nunique()!=1: continue
+
+        cid=selected_df['cid'].iloc[0]
+        if pd.isna(cid): continue
+
+        nodes_df.loc[row.name,'cid']=cid
+    
+    return nodes_df
+
+def add_parent_embs(nodes_df):
+    while nodes_df['emb'].isna().any():  # Continue until no NaNs remain in 'emb'
+        selector = nodes_df['emb'].notna()
+
+        for parent_id in nodes_df[selector]['parent_id'].unique():
+            # Calculate mean embedding for this parent node based on its children embeddings
+            children_embeddings = nodes_df[nodes_df['parent_id'] == parent_id]['emb']
+
+            if not children_embeddings.isna().any():  # Ensure all children have embeddings
+                parent_emb = np.mean(children_embeddings.values, axis=0)
+
+                if parent_id in nodes_df['id'].values:
+                    parent_idx = nodes_df[nodes_df['id']==parent_id].index[0]
+                
+                    # Assign mean embedding for each row with child_id == parent_id
+                    nodes_df.at[parent_idx, 'emb'] = parent_emb#] * sum(nodes_df['child_id'] == parent_id)
+    
+    return nodes_df
+
 
 from anytree import Node
 
