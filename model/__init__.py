@@ -102,7 +102,7 @@ class GenModelWrap(BaseModelWrap):
         super().__init__(ref, **kwargs)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['inference_tokenizer','training_tokenizer'])
+        self._config_keys_to_exclude.extend(['inference_tokenizer','training_tokenizer','outputs'])
 
         self._default_config=dict(
             bnb_config=dict(
@@ -121,9 +121,7 @@ class GenModelWrap(BaseModelWrap):
                 add_special_tokens=True,
             ),
             generation_config=dict(
-                return_dict_in_generate=True,
-                output_scores=False,
-                output_logits=False,
+                return_dict_in_generate=False,
                 max_new_tokens=750,
                 max_time=600,
                 stop_strings=None,
@@ -137,16 +135,52 @@ class GenModelWrap(BaseModelWrap):
         if not hasattr(self, 'model'): self.load_model()
         if not hasattr(self, 'inference_tokenizer'): self.load_inference_tokenizer()
 
+
+    def prepare_inference_inputs(self, the_input):
+
+        inputs=None
+        inference_tokenizer=self.inference_tokenizer
+
+        if isinstance(the_input, str): 
+            inputs=inference_tokenizer(the_input,return_tensors='pt').to('cuda')
+            
+
+        if isinstance(the_input, list):
+            if all(isinstance(item, str) for item in the_input):
+                inputs=inference_tokenizer.batch_encode_plus(the_input,padding=True, return_tensors='pt').to('cuda')
+            
+            elif all(isinstance(item, dict) for item in the_input):
+                inputs=inference_tokenizer.apply_chat_template(the_input, return_dict=True,return_tensors='pt').to('cuda')
+            
+            elif all(isinstance(item,int) for item in the_input):
+                inputs=inference_tokenizer.pad({"input_ids": [the_input]}, padding=True,return_tensors='pt').to('cuda')
+            
+            elif all(isinstance(item,list) for item in the_input):
+
+                if all(all(isinstance(item, int) for item in item_list) for item_list in the_input):
+                    inputs=inference_tokenizer.pad({"input_ids": the_input}, padding=True,return_tensors='pt').to('cuda')
+                    
+
+        if isinstance(the_input, dict):
+            if 'input_ids' in the_input.keys():
+                from transformers.tokenization_utils_base import BatchEncoding
+                inputs=BatchEncoding({k:v for k,v in the_input.items() if k in ['input_ids','attention_mask']})
+                inputs.to('cuda')
+
+
+        return inputs
     
-
-    def generate_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
-
+    def prepare_streaming(self):
         if not hasattr(self, 'streamer'):
             self.streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
 
         if not hasattr(self, 'pipeline'):
             self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
-        
+
+    def generate_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
+
+        self.prepare_streaming()
+
         pipeline_kwargs={
             'text_inputs':input_text_or_messages,
             'tokenizer':self.pipeline.tokenizer,
@@ -173,30 +207,62 @@ class GenModelWrap(BaseModelWrap):
             torch.cuda.empty_cache()
             self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
 
-    
-    #def generate(self,)
+    def get_generation_config(self, **kwargs):
+
+        generation_config=GenerationConfig.from_dict(self.generation_config)
+        if kwargs: generation_config.update(**kwargs)
+        if kwargs.get('generation_config'): generation_config.update(**kwargs.get('generation_config'))
+
+        return generation_config
 
 
-    def __call__(self, input, generation_config=None, stream=True):
+    def generate(self, inputs, **kwargs):
+        if kwargs.get('seed'): set_seed(kwargs.get('seed'))
+
+        generation_config=self.get_generation_config(**kwargs)
+
+        outputs=self.model.generate(
+            generation_config=generation_config,
+            tokenizer=self.inference_tokenizer,
+            **inputs)
+
+        return outputs
+
+
+
+    def get_pred_completions(self, inputs, outputs):
+
+        pred_completions=[]
+        for input_ids, output_ids in zip(inputs['input_ids'], outputs):
+            pred_ids=output_ids[len(input_ids):]
+            pred_completion=self.inference_tokenizer.decode(pred_ids, skip_special_tokens=True)
+            pred_completions.append(pred_completion)
+        
+        return pred_completions
+
+
+    def __call__(self, input, stream=False, **kwargs):
 
         self.prepare_inference()
+        inputs=self.prepare_inference_inputs(input)
+        is_batch=inputs['input_ids'].shape[0]>1
 
-        _generation_config = GenerationConfig.from_dict(self.generation_config)
-        _generation_config.update(**generation_config)
-        _generation_config.update(
-            return_dict_in_generate=False,
-            output_scores=False,
-            output_logits=False
-        )
-
-        if stream:
-            for new_token in self.generate_stream(input_text_or_messages=input_text, generation_config=_generation_config):
+        if stream and not is_batch:
+            pred_completion=""
+            for new_token in self.generate_stream(input_text_or_messages=inputs, **kwargs):
+                pred_completion += new_token
                 print(new_token,end='',flush=True)
-
         
+        else:
+            outputs=self.generate(inputs, **kwargs)
+            self.outputs=outputs # for debugging
+            pred_completions=self.get_pred_completions(inputs, outputs)
 
+        if not is_batch:
+            return pred_completions[0]
+        else:
+            return pred_completions
         
-
 
 
     def load_model(self):
@@ -262,8 +328,11 @@ class GenModelWrap(BaseModelWrap):
 
         if kwargs: generation_config.update(**kwargs)
         if kwargs.get('generation_config'): generation_config.update(**kwargs.get('generation_config'))
-        
-        inputs.to("cuda")
+
+        #if hasattr(inputs,'to'): inputs.to('cuda')
+
+        print(generation_config)
+
         outputs=self.model.generate(
             generation_config=generation_config,
             tokenizer=self.inference_tokenizer,
