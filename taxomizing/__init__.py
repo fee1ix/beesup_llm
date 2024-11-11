@@ -111,7 +111,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         self.update_attributes(self._default_config, overwrite=False)
 
     
-    def do_clustering(self,**kwargs):
+    def get_nodes_df(self,**kwargs):
 
         cluster_config=self.cluster_config
         cluster_config.update(kwargs)
@@ -128,8 +128,11 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         self.logger.info(f"number of unclustered: {np.sum(clusterer.labels_==-1)}")
 
         nodes_df=nodes_df_from_hdbscan(clusterer,self.chunks_df)
+        nodes_df=add_parent_embs(nodes_df)
 
-        tree=
+        self.nodes_df=nodes_df
+
+        return nodes_df
 
 
 
