@@ -2,16 +2,44 @@ import random
 import colorsys
 import numpy as np
 
+from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
+
+
+def get_different_colors_hsv(n):
+    hues = np.linspace(0, 1, n, endpoint=True)
+    colors = [np.array([hue,0.9,0.9]) for hue in hues]
+    return colors
+
+def assign_colors_list_hsv(cids):
+    cids = [cid if not np.isnan(cid) else -1.0 for cid in cids]
+    unique_clusters = np.unique(cids)
+    colors = get_different_colors_hsv(len(unique_clusters))
+    random.shuffle(colors)
+    cluster_colors = {cluster: color for cluster, color in zip(unique_clusters, colors)}
+
+    default_colors = {
+        np.nan:np.array([204,5,78]),
+        -1: np.array([204,5,78])
+        }
+    cluster_colors.update(default_colors)
+
+    return [cluster_colors[cluster] for cluster in cids]
+
+
 def get_different_colors(n):
     colors = []
     for i in range(n):
         hue = i / n
         lightness = 0.5  # you can play with lightness 
         saturation = 0.9  # saturation set to 0.9 to ensure colors are fairly vivid
+
+    
         rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
         colors.append(tuple(int(c * 255) for c in rgb))
 
     return ['rgb'+str(c) for c in colors]
+
+
 
 def assign_colors_list(cluster_ids):
     cluster_ids = [cid if not np.isnan(cid) else -1.0 for cid in cluster_ids]
