@@ -14,8 +14,7 @@ from beesup_llm.extraction import \
 def get_gold_completion(gold_json):
     return f"```json\n{json.dumps(gold_json,indent=2,ensure_ascii=False)}\n```"
 
-
-def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shots=True):
+def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shots=True, **kwargs):
 
     prompt_messages=[]
 
@@ -51,8 +50,6 @@ def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shot
     })
 
     return prompt_messages
-
-
 
 def pydantic_parse(completion,exclude_none=True,exclude_extra=False):
 
