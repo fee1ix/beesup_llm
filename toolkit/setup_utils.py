@@ -2,6 +2,7 @@ import re
 import os
 import yaml
 
+
 def load_yaml(path):
 
     with open(path, 'r') as file:
@@ -153,10 +154,21 @@ def filter_attributes(
 
     return filtered_dict
 
+def filter_kwargs(the_kwargs, allowed_keys=[], ref=None, exclude_prefixes=['_']):
+  
+    if hasattr(ref,'__dict__'):
+        allowed_keys+=[k for k in ref.__dict__.keys() if not any([k.startswith(prefix) for prefix in exclude_prefixes])]
+    
+    if hasattr(ref,'__annotations__'):
+        allowed_keys+=[k for k in ref.__annotations__.keys() if not any([k.startswith(prefix) for prefix in exclude_prefixes])]
+
+    filtered_kwargs={k:v for k,v in the_kwargs.items() if k in allowed_keys}
+ 
+    return filtered_kwargs
+
+
 def get_cls_attrs(cls):
     return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value) and not isinstance(value, classmethod)}
-
-
 
 import pytz
 import datetime
