@@ -1,5 +1,7 @@
-
+import pandas as pd
 import numpy as np
+
+from ..toolkit.setup_utils import *
 
 def assign_data_tree(node, df):
 
@@ -53,7 +55,6 @@ def get_node_data(tree):
 
     return node_data
 
-
 def nodes_df_from_hdbscan(clusterer,chunks_df):
 
     chunks_df['cid']=clusterer.labels_
@@ -63,18 +64,36 @@ def nodes_df_from_hdbscan(clusterer,chunks_df):
     nodes_df = nodes_df.rename(columns={
         'parent':'parent_id',
         'child':'id',
-        'child_size':'n_children',
+        'child_size':'size',
     })
-    nodes_df['is_leaf']=nodes_df.apply(lambda x: x['n_children']==1, axis=1)
+    nodes_df['is_leaf']=nodes_df.apply(lambda x: x['size']==1, axis=1)
 
-    nodes_df=nodes_df.sort_values(by=['n_children','id'], ascending=[True,True])
+    nodes_df=nodes_df.sort_values(by=['size','id'], ascending=[True,True])
 
-    nodes_df['label']=nodes_df.apply(lambda x: f"CLUSTER WITH {x.n_children} MEMBERS", axis=1)
+    nodes_df['label']=nodes_df.apply(lambda x: f"CLUSTER WITH {x['size']} MEMBERS", axis=1)
 
     nodes_df.loc[nodes_df['is_leaf'], 'label'] = chunks_df['label'].values
     nodes_df.loc[nodes_df['is_leaf'], 'emb'] = chunks_df['emb'].values
     nodes_df.loc[nodes_df['is_leaf'], 'cid'] = chunks_df['cid'].values
 
+    return nodes_df
+
+def add_root_row(nodes_df):
+
+    parent_ids=set(nodes_df['parent_id'].values)
+    node_ids=set(nodes_df['id'].values)
+    root_ids=parent_ids-node_ids
+
+    if len(root_ids)!=1: raise ValueError('more than one root found')
+
+    root_row=dict(
+        parent_id=None,
+        id=root_ids.pop(),
+        label='ROOT',
+        is_leaf=False,
+    )
+
+    nodes_df=pd.concat([nodes_df,pd.DataFrame([root_row])], ignore_index=True)
     return nodes_df
 
 def add_parent_cids(nodes_df):
@@ -115,41 +134,62 @@ def add_parent_embs(nodes_df):
 
 from anytree import Node
 
-def tree_from_nodes_df(nodes_df):
+def to_anytree(nodes_df):
     # Step 1: Create a dictionary to hold nodes (each 'child_id' and 'parent_id' is a node)
     nodes = {}
 
     # Step 2: Create nodes for each unique 'child_id' only, starting from the bottom
     for _, row in nodes_df.iterrows():
-        child_id = row['child_id']
-        if child_id not in nodes:
+
+        id = row['id']
+        if id not in nodes:
             # Create the node with attributes and store it in the nodes dictionary
-            nodes[child_id] = Node(
-                int(child_id),
-                parent_id=row['parent_id'],
-                lambda_val=row['lambda_val'], 
-                n_children=row['n_children'],
-                label=row['label'],
-                emb=row['emb'],
-                )
+            nodes[id] = Node(int(id))
+            for k,v in row.items():
+                if k in ['is_leaf','is_root','size','depth','height']: continue
+                nodes[id].__setattr__(k,v)
 
     # Step 3: Assign parents according to the 'parent_id'
     for _, row in nodes_df.iterrows():
         parent_id = row['parent_id']
-        child_id = row['child_id']
+        id = row['id']
         
         # If the parent exists, assign it as the parent of the child node
         if parent_id:
             if parent_id not in nodes:
+                continue
                 # Create the parent node if it does not exist
-                nodes[parent_id] = Node(parent_id)
-            nodes[child_id].parent = nodes[parent_id]
-
+                #nodes[parent_id] = Node(parent_id)
+            nodes[id].parent = nodes[parent_id]
+    
     # Step 4: Identify disconnected components and handle them as independent trees or under a new root
-    root = Node("ROOT")  # Create an artificial root if needed to unify the trees
-
     for node in nodes.values():
         if node.parent is None:  # Identify root nodes of disconnected components
-            node.parent = root  # Attach them to the artificial root, or leave as is if separate trees are desired
+            return node
+
+def to_nodes_df(tree):
+
+    node_data=[]
+
+    for node in [tree] + list(tree.descendants):
+
+        node_row=dict(id=node.name)
+        node_row.update(filter_attributes(node,include_types=None))
+        del node_row['name']
+        node_row.update(dict(
+            is_leaf=node.is_leaf,
+            is_root=node.is_root,
+            size=node.size,
+            height=node.height,
+            depth=node.depth,
+        ))
+
+        node_data.append(node_row)
+
+    nodes_df=pd.DataFrame(node_data)
+    nodes_df=nodes_df.sort_values(by=['size','id'], ascending=[True,True])
     
-    return root
+    return nodes_df
+
+
+
