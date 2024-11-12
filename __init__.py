@@ -221,6 +221,9 @@ class BaseDirectory(object):
     def get_max_id(self):
         assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
         return get_max_id(self.parent_dir_path)
+    
+    def is_spawned(self):
+        return os.path.exists(f'{self.path}')
 
 
     def get_config(self):
