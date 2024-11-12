@@ -66,6 +66,7 @@ class BaseModelWrap(BaseDirectory):
         else:
             return self.model
 
+
 from threading import Thread
 from transformers import TextGenerationPipeline, TextIteratorStreamer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, GenerationConfig, set_seed
@@ -125,6 +126,12 @@ class GenModelWrap(BaseModelWrap):
                 max_new_tokens=750,
                 max_time=600,
                 stop_strings=None,
+            ),
+            data_collator_config=dict(
+                label_pad_token_id=-100,
+            ),
+            dataloader_config=dict(
+                batch_size=4,
             )
         )
         
@@ -135,8 +142,9 @@ class GenModelWrap(BaseModelWrap):
         if not hasattr(self, 'model'): self.load_model()
         if not hasattr(self, 'inference_tokenizer'): self.load_inference_tokenizer()
 
-
     def prepare_inference_inputs(self, the_input):
+
+        from transformers.tokenization_utils_base import BatchEncoding
 
         inputs=None
         inference_tokenizer=self.inference_tokenizer
@@ -160,15 +168,11 @@ class GenModelWrap(BaseModelWrap):
                 if all(all(isinstance(item, int) for item in item_list) for item_list in the_input):
                     inputs=inference_tokenizer.pad({"input_ids": the_input}, padding=True,return_tensors='pt').to('cuda')
                     
-
         if isinstance(the_input, dict):
             if 'input_ids' in the_input.keys():
-                from transformers.tokenization_utils_base import BatchEncoding
-                inputs=BatchEncoding({k:v for k,v in the_input.items() if k in ['input_ids','attention_mask']})
-                inputs.to('cuda')
-
-
-        return inputs
+                inputs={k:v for k,v in the_input.items() if k in ['input_ids','attention_mask']}
+        
+        return BatchEncoding(inputs)
     
     def prepare_streaming(self):
         if not hasattr(self, 'streamer'):
@@ -177,7 +181,7 @@ class GenModelWrap(BaseModelWrap):
         if not hasattr(self, 'pipeline'):
             self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
 
-    def generate_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
+    def generation_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
 
         self.prepare_streaming()
 
@@ -209,11 +213,121 @@ class GenModelWrap(BaseModelWrap):
 
     def get_generation_config(self, **kwargs):
 
-        generation_config=GenerationConfig.from_dict(self.generation_config)
-        if kwargs: generation_config.update(**kwargs)
-        if kwargs.get('generation_config'): generation_config.update(**kwargs.get('generation_config'))
+        from transformers import GenerationConfig
+
+        generation_config=self.generation_config
+        if kwargs.get('generation_config'): 
+            generation_config.update(**kwargs.get('generation_config'))
+        else:
+            kwargs=filter_kwargs(kwargs, ref=GenerationConfig)
+            generation_config.update(**kwargs)
+
+        generation_config=GenerationConfig.from_dict(generation_config)
 
         return generation_config
+
+    def get_data_collator(self, **kwargs):
+        from transformers import DataCollatorForSeq2Seq
+        data_collator_config=self.data_collator_config
+        if kwargs.get('data_collator_config'): 
+            data_collator_config.update(kwargs.get('data_collator_config'))
+        else:
+            kwargs=filter_kwargs(kwargs, ref=DataCollatorForSeq2Seq)
+            data_collator_config.update(kwargs)
+        
+        data_collator=DataCollatorForSeq2Seq(
+            model=self.model,
+            tokenizer=self.get_inference_tokenizer(),
+            **data_collator_config
+            )
+
+        return data_collator
+
+    def get_dataloader(self, ds, **kwargs):
+
+        data_collator=kwargs.get('data_collator', self.get_data_collator(**kwargs))
+        
+        from torch.utils.data import DataLoader
+
+        dataloader_config=self.dataloader_config
+        if kwargs.get('dataloader_config'): 
+            dataloader_config.update(**kwargs.get('dataloader_config'))
+        else:
+            kwargs=filter_kwargs(kwargs, ref=DataLoader)
+            dataloader_config.update(**kwargs)
+
+        dataloader=DataLoader(
+            ds,
+            collate_fn=data_collator,
+            **dataloader_config
+            )
+
+        return dataloader
+
+    def generation_step(self, inputs, **kwargs):
+
+        generation_config=self.get_generation_config(**kwargs)
+
+        inputs.to('cuda')
+
+        outputs=self.model.generate(
+            generation_config=generation_config,
+            tokenizer=self.inference_tokenizer,
+            **inputs)
+        
+        self._outputs=outputs
+
+        return outputs
+
+    def generation_loop(self, dataset, **kwargs):
+
+        self.prepare_inference()
+
+        dataloader=kwargs.get('dataloader', self.get_dataloader(dataset,**kwargs))
+        self._dataloader=dataloader
+
+        from transformers.trainer_pt_utils import EvalLoopContainer
+
+        # Initialize containers
+        all_input_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_label_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_pred_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_all_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+        all_losses = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
+
+        num_batches=len(dataloader)
+        for step, inputs in enumerate(dataloader):
+
+            input_ids, label_ids, pred_ids,all_ids, losses  = None, None, None, None, None
+            
+            input_ids=inputs.get('input_ids',None)
+            label_ids=inputs.get('labels',None)
+
+
+
+            self.logger.info(f'batch {step+1}/{num_batches}')
+
+            all_ids=self.generation_step(inputs, **kwargs)
+
+     
+            if input_ids is not None: all_input_ids.add(input_ids)
+            if label_ids is not None: all_label_ids.add(label_ids)
+
+            if all_ids is not None: all_all_ids.add(all_ids)
+
+            if pred_ids is not None: all_pred_ids.add(pred_ids)
+            if losses is not None: all_losses.add(losses)
+
+            del input_ids, label_ids, pred_ids, losses, all_ids
+            torch.cuda.empty_cache()
+
+        return  { 
+            'all_input_ids': all_input_ids.get_arrays(),
+            'all_label_ids': all_label_ids.get_arrays(),
+            'all_pred_ids': all_pred_ids.get_arrays(),
+            'all_all_ids': all_all_ids.get_arrays(),
+            'all_losses': all_losses.get_arrays(),
+        }
 
 
     def generate(self, inputs, **kwargs):
@@ -227,8 +341,6 @@ class GenModelWrap(BaseModelWrap):
             **inputs)
 
         return outputs
-
-
 
     def get_pred_completions(self, inputs, outputs):
 
@@ -320,68 +432,8 @@ class GenModelWrap(BaseModelWrap):
         else:
             return self.training_tokenizer
             
-    def inference_step(self,inputs,**kwargs):
 
-        generation_config=GenerationConfig.from_dict(self.generation_config)
-    
-        if kwargs.get('seed'): set_seed(kwargs.get('seed'))
 
-        if kwargs: generation_config.update(**kwargs)
-        if kwargs.get('generation_config'): generation_config.update(**kwargs.get('generation_config'))
-
-        #if hasattr(inputs,'to'): inputs.to('cuda')
-
-        print(generation_config)
-
-        outputs=self.model.generate(
-            generation_config=generation_config,
-            tokenizer=self.inference_tokenizer,
-            **inputs)
-        
-        return outputs
-
-    def inference_loop(self, dataloader, **kwargs):
-
-        import torch
-        from transformers.trainer_pt_utils import EvalLoopContainer
-
-        # Initialize containers
-        all_input_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
-        all_label_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
-        all_pred_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
-        all_all_ids = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
-        all_losses = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
-
-        for step, inputs in enumerate(dataloader):
-
-            input_ids, label_ids, pred_ids,all_ids, losses  = None, None, None, None, None
-            
-            input_ids=inputs.get('input_ids',None)
-            label_ids=inputs.get('labels',None)
-
-            self.logger.info(f'step = {step}')
-
-            all_ids=self.inference_step(inputs, **kwargs)['sequences']
-
-     
-            if input_ids is not None: all_input_ids.add(input_ids)
-            if label_ids is not None: all_label_ids.add(label_ids)
-
-            if all_ids is not None: all_all_ids.add(all_ids)
-
-            if pred_ids is not None: all_pred_ids.add(pred_ids)
-            if losses is not None: all_losses.add(losses)
-
-            del input_ids, label_ids, pred_ids, losses, all_ids
-            torch.cuda.empty_cache()
-
-        return  { 
-            'all_input_ids': all_input_ids.get_arrays(),
-            'all_label_ids': all_label_ids.get_arrays(),
-            'all_pred_ids': all_pred_ids.get_arrays(),
-            'all_all_ids': all_all_ids.get_arrays(),
-            'all_losses': all_losses.get_arrays(),
-        }
 
 class LlamaModelWrap(GenModelWrap):
 
