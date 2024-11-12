@@ -87,7 +87,6 @@ class TaxomizingPipeline(BaseDirectory):
 
         return nodes_df
 
-
 class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
