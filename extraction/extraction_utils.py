@@ -51,48 +51,33 @@ def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shot
 
     return prompt_messages
 
-def pydantic_parse(completion,exclude_none=True,exclude_extra=False):
 
-    pydantic_parse.is_valid=False
-    pydantic_parse.is_empty=False
+def pydantic_parse(completion,exclude_none=True):
 
-    if completion==None:
-        completion="""
-```json
-{}
-```
-""".strip()
+    is_valid=False
+    is_empty=False
 
-    if not isinstance(completion,str):
-        return None
+    if completion==None: completion="```json\n{}\n```"
+
+    if not isinstance(completion,str): return None, is_valid, is_empty
 
     completion=completion.strip()
     re_match=re.search(r"```json\s*(.*?)```",completion,flags=re.S|re.M)
 
 
-    if not re_match: return None
+    if not re_match: return None, is_valid, is_empty
 
     completion=re_match.groups()[0]
 
     try:
-        #ExtractionScheme4MultipeObservations.model_validate_json(completion)
-        #completion_json=json.loads(completion)
-        #completion_json=ExtractionScheme4MultipeObservations.model_validate_json(completion).json(exclude_none=exclude_none)
-
         completion_json=ExtractionScheme4MultipeObservations.parse_raw(completion).dict(exclude_none=exclude_none)
-        pydantic_parse.is_valid=True
-        pydantic_parse.is_empty=all([val==None for val in completion_json.values()])
+        is_valid=True
+        is_empty=all([val==None for val in completion_json.values()])
 
-        # if exclude_extra:
-        #     if 'observations' in completion_json:
-        #         for i,obs in enumerate(completion_json['observations']):
-        #             for 
-
-        
-        return completion_json
+        return completion_json, is_valid, is_empty
     
     except ValidationError as e:
-        return str(e)
+        return str(e), is_valid, is_empty
 
 def integrate_metas(base_json,allow_extra_keys=False):
 
@@ -168,6 +153,9 @@ def tabelize_json(base_json, create_meta_row=True):
 
     return table_df
 
+
+
+
 def parse_completion(completion,verbose=False):
     base_json=pydantic_parse(completion,exclude_none=False)
     #base_json=stringify_extraction_json(base_json)
@@ -188,9 +176,11 @@ def parse_completion(completion,verbose=False):
     if verbose:
         print(f'completion is parsable: {pydantic_parse.is_valid}')
         print(f'   completion is empty: {pydantic_parse.is_empty}')
-    
+
+    parse_completion.pred_json=base_json
     parse_completion.is_valid=pydantic_parse.is_valid
     parse_completion.is_empty=pydantic_parse.is_empty
+
     
     return raw_df,tab_df
 
