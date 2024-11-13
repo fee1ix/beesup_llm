@@ -161,6 +161,12 @@ def filter_kwargs(the_kwargs, allowed_keys=[], ref=None, exclude_prefixes=['_'])
     
     if hasattr(ref,'__annotations__'):
         allowed_keys+=[k for k in ref.__annotations__.keys() if not any([k.startswith(prefix) for prefix in exclude_prefixes])]
+    
+    if isinstance(ref,dict):
+        allowed_keys+=[k for k in ref.keys() if not any([k.startswith(prefix) for prefix in exclude_prefixes])]
+    
+    if isinstance(ref,list):
+        allowed_keys+=[k for k in ref if not any([k.startswith(prefix) for prefix in exclude_prefixes])]
 
     filtered_kwargs={k:v for k,v in the_kwargs.items() if k in allowed_keys}
  
