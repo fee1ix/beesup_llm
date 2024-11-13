@@ -1,9 +1,10 @@
 import random
+
 import colorsys
 import numpy as np
+import seaborn as sns
 
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
-
 
 def get_different_colors_hsv(n):
     hues = np.linspace(0, 1, n, endpoint=True)
@@ -97,3 +98,71 @@ def print_multicol(cols):
 
 
 
+def assign_pca_coords(embs_df, n_components=3):
+
+    # prepare pca
+    from sklearn.decomposition import PCA
+    emb_space=np.vstack(embs_df['emb'].values)
+
+    pca=PCA(n_components=n_components)
+    pca.fit(emb_space)
+    #logging.info(f'explained variance ratio: {pca.explained_variance_ratio_}')
+
+    pca_coords=pca.transform(np.vstack(embs_df['emb']))
+
+    dimensional_labels='xyzuvw'
+    for i, letter in enumerate(dimensional_labels[:n_components]):
+        embs_df[f'pca_{letter}']=pca_coords[:,i]
+    
+    return embs_df
+
+
+
+import plotly.graph_objects as go
+GO_LAYOUT=go.Layout(
+        title="PCA reduced Embedding-Space",
+        #width=1700, height=800,
+        scene=dict(
+            bgcolor='black',       # Background color of the 3D scene
+            xaxis=dict(backgroundcolor="grey", gridcolor="darkgrey"),
+            yaxis=dict(backgroundcolor="grey", gridcolor="darkgrey"),
+            zaxis=dict(backgroundcolor="grey", gridcolor="darkgrey")
+        ),
+        paper_bgcolor='black',   # Background color outside the 3D scene
+        plot_bgcolor='black',     # Background color of the entire plotting area
+        #showlegend=True,
+    )
+
+
+
+def plot_emb_clustering_scatter_3d(clustering_df, n_samples=None, random_state=22):
+    
+    if n_samples is None: n_samples=len(clustering_df)
+
+    plot_df=clustering_df.copy()
+    plot_df=plot_df.sample(n=n_samples, random_state=random_state)
+
+    if not {'pca_x', 'pca_y', 'pca_z'}.issubset(plot_df.columns):
+        plot_df=assign_pca_coords(plot_df, n_components=3)
+
+    if not 'color' in plot_df.columns:
+        plot_df['color']=assign_colors_list(plot_df['cluster_id'].values)
+
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter3d(
+        x=plot_df['pca_x'].values,
+        y=plot_df['pca_y'].values,
+        z=plot_df['pca_z'].values,
+        mode='markers',  # 'markers' mode for points
+        marker=dict(size=2, color=plot_df['color']),  # Customize marker appearance
+        name='knowledge_points',  # Name for the legend
+        showlegend=True,
+        text=plot_df['label'].values if 'label' in plot_df.columns else None,
+        hoverinfo='text'
+        )
+    )
+
+    fig.update_layout(GO_LAYOUT)
+    fig.show(renderer='vscode')
