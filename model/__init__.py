@@ -174,43 +174,6 @@ class GenModelWrap(BaseModelWrap):
         
         return BatchEncoding(inputs)
     
-    def prepare_streaming(self):
-        if not hasattr(self, 'streamer'):
-            self.streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
-
-        if not hasattr(self, 'pipeline'):
-            self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
-
-    def generation_stream(self, input_text_or_messages, generation_config=None, stop_event=None):
-
-        self.prepare_streaming()
-
-        pipeline_kwargs={
-            'text_inputs':input_text_or_messages,
-            'tokenizer':self.pipeline.tokenizer,
-            'generation_config':generation_config
-        }
-        
-        streamer_thread=Thread(target=self.pipeline, kwargs=pipeline_kwargs)
-
-        try:
-            streamer_thread.start()
-            pred_completion=""
-
-            for new_token in self.streamer:
-                pred_completion+=new_token
-                # extract_stream.pred_completion=pred_completion
-                # extract_stream.completion_tokens+=1
-                yield new_token
-
-            streamer_thread.join()
-        
-        except Exception as e:
-            self.logger.info(f'{e}')
-            streamer_thread.join()
-            torch.cuda.empty_cache()
-            self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
-
     def get_generation_config(self, **kwargs):
 
         from transformers import GenerationConfig
@@ -225,6 +188,41 @@ class GenModelWrap(BaseModelWrap):
         generation_config=GenerationConfig.from_dict(generation_config)
 
         return generation_config
+
+    def prepare_streaming(self):
+        if not hasattr(self, 'streamer'):
+            self.streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
+
+        if not hasattr(self, 'pipeline'):
+            self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
+
+    def generation_stream(self, input_text_or_messages, stop_event=None, **kwargs):
+
+        self.prepare_inference()
+        self.prepare_streaming()
+
+        pipeline_kwargs={
+            'text_inputs':input_text_or_messages,
+            'tokenizer':self.pipeline.tokenizer,
+            'generation_config':self.get_generation_config(**kwargs),
+        }
+        
+        streamer_thread=Thread(target=self.pipeline, kwargs=pipeline_kwargs)
+
+        try:
+            streamer_thread.start()
+            for new_token in self.streamer:
+                yield new_token
+
+            streamer_thread.join()
+        
+        except Exception as e:
+            self.logger.info(f'{e}')
+            streamer_thread.join()
+            torch.cuda.empty_cache()
+            self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
+
+
 
     def get_data_collator(self, **kwargs):
         from transformers import DataCollatorForSeq2Seq
@@ -329,7 +327,6 @@ class GenModelWrap(BaseModelWrap):
             'all_losses': all_losses.get_arrays(),
         }
 
-
     def generate(self, inputs, **kwargs):
         if kwargs.get('seed'): set_seed(kwargs.get('seed'))
 
@@ -351,7 +348,6 @@ class GenModelWrap(BaseModelWrap):
             pred_completions.append(pred_completion)
         
         return pred_completions
-
 
     def __call__(self, input, stream=False, **kwargs):
 
