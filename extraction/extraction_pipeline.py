@@ -9,6 +9,46 @@ from beesup_llm.dataset import *
 
 from .extraction_utils import *
 
+
+class ExtractionSample(object):
+    
+    def __init__(self, pred_completion=None, **kwargs):
+
+        self.pred_completion=pred_completion
+
+        for k,val in kwargs.items(): 
+            setattr(self,k,val)
+
+        assert hasattr(self, 'pred_completion'), "missing 'pred_completion'"
+        self.parse_json(prefix='pred', exclude_none=True)
+        self.parse_df(prefix='pred')
+
+
+    def parse_json(self, prefix='pred', exclude_none=True):
+        completion=getattr(self, f'{prefix}_completion')
+        the_json, is_valid, is_empty=pydantic_parse(completion, exclude_none)
+
+        if is_valid==False:
+            the_json={k:None for k in ExtractionScheme4MultipeObservations.model_fields.keys()}
+
+        setattr(self, f'{prefix}_json', the_json)
+        setattr(self, f'{prefix}_is_valid', is_valid)
+        setattr(self, f'{prefix}_is_empty', is_empty)
+        
+        return 
+    
+    def parse_df(self, prefix='pred'):
+
+        the_json=getattr(self, f'{prefix}_json')
+        the_df=tabelize_json(the_json,create_meta_row=False)
+
+        the_df.attrs['is_empty']=getattr(self, f'{prefix}_is_empty')
+        the_df.attrs['is_valid']=getattr(self, f'{prefix}_is_valid')
+        setattr(self,f'{prefix}_df',the_df)
+
+        return 
+    
+
 class ExtractionPipeline(BaseDirectory):
     type='extraction_pipeline'
 
@@ -39,80 +79,62 @@ class ExtractionPipeline(BaseDirectory):
             self.gen_model_config=self.modelwrap.get_config()
             #self.tokenizer=self.modelwrap.get_inference_tokenizer()
     
-
-
-    def process_completion(self, pred_completion):
-
-        raw_df,tab_df=parse_completion(pred_completion)
-
-        self.logger.info(f"is_valid: {parse_completion.is_valid}")
-        self.logger.info(f"is_empty: {parse_completion.is_empty}")
-
-    #def apply_report_passage(self, report_passage, **kwargs):
-
-    def prepare_dataset(self, df, **kwargs):
+    def get_prompting_config(self, **kwargs):
 
         prompting_config=dict(
             use_extraction_prompt=self.use_extraction_prompt,
             use_few_shots=self.use_few_shots
         )
+        kwargs=filter_kwargs(kwargs, prompting_config.keys())
         prompting_config.update(kwargs)
 
-        from datasets import Dataset
+        return prompting_config
+
+    def get_pred(self, report_passage, **kwargs):
+
+        prompt_messages=get_prompt_messages(report_passage, **self.get_prompting_config(**kwargs))
+
+        pred_completion=''
+        for new_token in self.modelwrap.generation_stream(prompt_messages):
+            pred_completion+=new_token
+            print(new_token, end='', flush=True)
+
+        sample=ExtractionSample(pred_completion=pred_completion)
+
+        return sample.pred_json
+
+    def get_pred_df(self, df, **kwargs):
 
         assert 'report_passage' in df.columns, "df must have 'report_passage' column"
-        df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**prompting_config))
+        df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
+
+        from datasets import Dataset
         ds=Dataset.from_list(df.apply(lambda x: prepare_sample(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
 
-        return ds
-
-
-    def apply_df(self, df, **kwargs):
-
-        ds = self.prepare_dataset(df, **kwargs)
-        self._ds=ds
-
         generation_outputs=self.modelwrap.generation_loop(ds,**kwargs)
-
         self._generation_outputs=generation_outputs
         generation_df=to_outputs_df(generation_outputs,tokenizer=self.modelwrap.get_inference_tokenizer())
-
         self._generation_df=generation_df
 
         df['pred_completion']=generation_df['pred_completion'].values
 
+        for i,row in df.iterrows():
+            sample=ExtractionSample(pred_completion=row['pred_completion'])
+            df.at[i,'pred_json']=sample.pred_json
+
         return df
 
-    
-    def __call__(self, passages_df, **kwargs):
+        
+    def __call__(self, the_input, **kwargs):
 
-        #possible inputs:
-        # - report passage
-        # - dataframe with report passages
+        if isinstance(the_input, str):
+            return self.get_pred(the_input, **kwargs)
+        
+        elif isinstance(the_input, pd.DataFrame):
+            return self.get_pred_df(the_input, **kwargs)
+        
+        return
 
-        _kwargs=dict(
-            use_extraction_prompt=self.use_extraction_prompt,
-            use_few_shots=self.use_few_shots
-        )
-        _kwargs.update(kwargs)
-
-        prompt_messages=get_prompt_messages(report_passage, **kwargs)
-        outputs=self.modelwrap(prompt_messages,**kwargs)
-
-
-
-
-        # #prompt_ids=self.get_prompt_ids(report_passage, **kwargs)
-        # outputs=self.modelwrap.inference_step({'input':prompt_ids})
-
-        return outputs
-    
-
-    #def __call__by_report_passage(self, report_passage,**kwargs):
-
-
-    
-    #def __call__by_df(self, df, **kwargs):
 
 
     
