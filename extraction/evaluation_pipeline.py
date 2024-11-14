@@ -15,7 +15,6 @@ class EvaluationSample(ExtractionSample):
 
         self.evaluate()
 
-
     def evaluate(self):
 
         gold_df=self.gold_df
@@ -34,29 +33,45 @@ class EvaluationSample(ExtractionSample):
         self.eval_dict=eval_dict
 
         self.total_score=eval_dict['total_score']
-
     
+    def evaluate_raw(self):
+
+        self.parse_df(prefix='gold', create_meta_row=True)
+        self.parse_df(prefix='pred', create_meta_row=True)
+
+        raw_gold_df=self.raw_gold_df
+        raw_pred_df=self.raw_pred_df
+
+        raw_match_df=get_match(raw_gold_df,raw_pred_df)
+        self.raw_match_df=raw_match_df
+
+        raw_errors_df=get_errors(raw_match_df,raw_gold_df,raw_pred_df)
+        self.raw_errors_df=raw_errors_df
+
+        raw_conf_dict=get_conf_dict(raw_errors_df)
+        self.raw_conf_dict=raw_conf_dict
+
+        raw_eval_dict=get_eval_dict(raw_conf_dict)
+        self.raw_eval_dict=raw_eval_dict
+
+        self.raw_total_score=raw_eval_dict['total_score']
+
     def load_highlighting(self):
 
-        self.errors_df=get_error_spans(self.errors_df,self.gold_completion,self.pred_completion,verbose=False)
-
-        self.gold_highlighting=get_char_highlighting(self.gold_completion,self.errors_df,col='gold')
-        self.pred_highlighting=get_char_highlighting(self.pred_completion,self.errors_df,col='pred')
+        self.evaluate_raw()
+        self.raw_errors_df=get_error_spans(self.raw_errors_df,self.gold_completion,self.pred_completion,verbose=False)
+        self.gold_highlighting=get_char_highlighting(self.gold_completion,self.raw_errors_df,col='gold')
+        self.pred_highlighting=get_char_highlighting(self.pred_completion,self.raw_errors_df,col='pred')
         
     def __repr__(self):
         if not hasattr(self, 'gold_highlighting'): self.load_highlighting()
         if not hasattr(self, 'pred_highlighting'): self.load_highlighting()
 
         from ..toolkit.visualization import print_multicol
-        print_multicol(["<h2>TARGET</h2>",f"<h2>PREDICTION (total_score={self.total_score:.3f})</h2>"])
+        print_multicol(["<h2>GOLD-LABEL</h2>",f"<h2>PREDICTION (total_score={self.total_score:.3f})</h2>"])
         print_multicol([self.gold_highlighting,self.pred_highlighting])
+        return ''
 
-
-
-
-
-    
-    
 
 
 class EvaluationPipeline(ExtractionPipeline):
@@ -78,10 +93,11 @@ class EvaluationPipeline(ExtractionPipeline):
         return sample.eval_dict
     
     def get_eval_df(self, df, **kwargs):
-
+        df=df.copy()
         assert 'gold_completion' in df.columns, "missing 'gold_completion' column"
         assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
 
+        df['eval_dict']=None
         for i,row in df.iterrows():
             sample=EvaluationSample(**row)
             df.at[i,'eval_dict']=sample.eval_dict
@@ -90,22 +106,7 @@ class EvaluationPipeline(ExtractionPipeline):
     
 
 
-
-
-    
-
-    # def __call__(self, pred_completion=None, gold_completion=None, **kwargs):
-
-
-    #     return outputs
-    
-    # def call_by_row(self, row):
-
-
-
-
-    # def call_by_dict(self, the_dict)
-
+    #def __call__()
 
 
 
