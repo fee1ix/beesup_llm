@@ -98,16 +98,93 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         self._default_config=dict(
             cluster_config=dict(
                 min_cluster_size=60, #5
+                max_cluster_size=0, #0
                 min_samples=None, #None
+                p=2, #2
                 alpha=1.0, #1.0
                 leaf_size=40, #40
                 cluster_selection_epsilon=0.1, #0.0
                 cluster_selection_method="eom", #eom, leaf
                 allow_single_cluster=False, #False
                 metric='precomputed',
+                approx_min_span_tree=True, #True
+                gen_min_span_tree=False, #False
+                cluster_selection_epsilon_max=float('inf'), #float('inf')
             )
         )
         self.update_attributes(self._default_config, overwrite=False)
+
+    def get_cluster_config(self, **kwargs):
+
+        cluster_config=self.cluster_config
+
+        if 'cluster_config' in kwargs:
+            kwargs=kwargs['cluster_config']
+
+        cluster_config.update(filter_kwargs(kwargs,allowed_keys=cluster_config.keys()))
+
+        return cluster_config
+    
+    def load_clusterer(self, **kwargs):
+        self.clusterer=hdbscan.HDBSCAN(**self.get_cluster_config(**kwargs))
+
+    
+    def fit(self, data, **kwargs):
+
+        cluster_config=self.get_cluster_config(**kwargs)
+        #self.clusterer=hdbscan.HDBSCAN(**cluster_config)
+        #(embs==np.vstack(chunks_df['emb'].values)).all()
+        
+        if cluster_config['metric']=='precomputed':
+            data=cosine_distances(data)
+            data = data.astype(np.float64)
+
+        self.clusterer.fit(data)
+
+        self.logger.info(f"number of clusters: {len(set(self.clusterer.labels_))}")
+        self.logger.info(f"number of clustered: {np.sum(self.clusterer.labels_!=-1)}")
+        self.logger.info(f"number of unclustered: {np.sum(self.clusterer.labels_==-1)}")
+
+    
+    def fit_chunks_df(self, chunks_df, **kwargs):
+
+        self.fit(np.vstack(chunks_df['emb'].values), **kwargs)
+        chunks_df['cid']=self.clusterer.labels_
+        
+        nodes_df=nodes_df_from_hdbscan(self.clusterer,chunks_df)
+        nodes_df=add_root_row(nodes_df)
+        nodes_df=propagate_mean(nodes_df,key='emb')
+        
+
+        tree=to_anytree(nodes_df)
+        self.logger.info(f"tree.height: {tree.height}")
+
+
+        member_tree=get_member_tree(tree)
+        self.logger.info(f"member_tree.size: {member_tree.size}")
+        member_df=to_nodes_df(member_tree)
+
+        self.chunks_df=chunks_df
+        self.nodes_df=nodes_df
+        self.tree=tree
+        self.member_tree=member_tree
+        self.member_df=member_df
+
+        return
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
 
     
     def get_nodes_df(self,**kwargs):

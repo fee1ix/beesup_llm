@@ -1,4 +1,5 @@
 import pandas as pd
+from ..toolkit.setup_utils import *
 
 def prepare_sample(sample, tokenizer):
 
@@ -46,6 +47,41 @@ def prepare_sample(sample, tokenizer):
         raise Warning("undefined sample format")
 
     return {**inputs}
+
+def prepare_sample_for_chat_completion(the_input, tokenizer):
+
+    if isinstance(the_input, list): #assume that chat messages are given
+        prompt_messages=the_input
+    
+    elif hasattrs_or_keys(the_input, ['prompt_messages']):
+        prompt_messages=the_input['prompt_messages']
+
+    return tokenizer.apply_chat_template(prompt_messages,return_dict=True)
+
+def prepare_sample_for_chat_training(the_input, tokenizer):
+    
+    if hasattrs_or_keys(the_input, ['prompt_messages','gold_message']):
+        prompt_messages=the_input['prompt_messages']
+        gold_message=the_input['gold_message']
+
+    
+    if gold_message['role']!='assistant': warnings.warn('The gold message should be an assistant message')
+    if prompt_messages[-1]['role']!='user': warnings.warn('The last prompt message should be a user message')
+
+    all_messages=prompt_messages+gold_message
+
+    prompt_ids=tokenizer.apply_chat_template(prompt_messages,tokenize=True)
+    prompt_len=len(prompt_ids)
+
+    input_ids=tokenizer.apply_chat_template(all_messages,tokenize=True)
+    
+    #input_text=tokenizer.apply_chat_template(all_messages,tokenize=False)
+    inputs=tokenizer.apply_chat_template(all_messages,return_dict=True)
+
+    inputs['labels']=prompt_len*[-100]+input_ids[prompt_len:]
+
+    return inputs
+
 
 
 def to_outputs_df(generation_outputs, tokenizer=None):

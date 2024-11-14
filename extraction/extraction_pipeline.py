@@ -23,7 +23,6 @@ class ExtractionSample(object):
         self.parse_json(prefix='pred', exclude_none=True)
         self.parse_df(prefix='pred')
 
-
     def parse_json(self, prefix='pred', exclude_none=True):
         completion=getattr(self, f'{prefix}_completion')
         the_json, is_valid, is_empty=pydantic_parse(completion, exclude_none)
@@ -37,14 +36,20 @@ class ExtractionSample(object):
         
         return 
     
-    def parse_df(self, prefix='pred'):
+    def parse_df(self, prefix='pred', create_meta_row=False):
+        """
+        create_meta_row=False: meta attributes are backpropagated to the individual observations, this is the default for evaluation!!
+        create_meta_row=True is only used for generating the highlightning!
+        """
 
         the_json=getattr(self, f'{prefix}_json')
-        the_df=tabelize_json(the_json,create_meta_row=False)
+        the_df=tabelize_json(the_json,create_meta_row=create_meta_row) # create_meta_row=False determines if meta attributes are backpropagated to the individual observations
 
         the_df.attrs['is_empty']=getattr(self, f'{prefix}_is_empty')
         the_df.attrs['is_valid']=getattr(self, f'{prefix}_is_valid')
-        setattr(self,f'{prefix}_df',the_df)
+        
+        if create_meta_row==True: setattr(self,f'raw_{prefix}_df',the_df)
+        else: setattr(self,f'{prefix}_df',the_df)
 
         return 
     
@@ -104,12 +109,11 @@ class ExtractionPipeline(BaseDirectory):
         return sample.pred_json
 
     def get_pred_df(self, df, **kwargs):
-
         assert 'report_passage' in df.columns, "df must have 'report_passage' column"
         df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
 
         from datasets import Dataset
-        ds=Dataset.from_list(df.apply(lambda x: prepare_sample(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
+        ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
 
         generation_outputs=self.modelwrap.generation_loop(ds,**kwargs)
         self._generation_outputs=generation_outputs
@@ -118,9 +122,12 @@ class ExtractionPipeline(BaseDirectory):
 
         df['pred_completion']=generation_df['pred_completion'].values
 
+        df['pred_json']=None
         for i,row in df.iterrows():
-            sample=ExtractionSample(pred_completion=row['pred_completion'])
-            df.at[i,'pred_json']=sample.pred_json
+            try:
+                sample=ExtractionSample(pred_completion=row['pred_completion'])
+                df.at[i,'pred_json']=sample.pred_json
+            except: pass
 
         return df
 

@@ -137,6 +137,17 @@ class GenModelWrap(BaseModelWrap):
         
         self.update_attributes(self._default_config, overwrite=False)
 
+    def get_updated_config(self, kwargs, config_key='some_config'):
+
+        base_config=getattr(self,config_key)
+
+        if config_key in kwargs: kwargs.update(kwargs.get(config_key))
+
+        kwargs={k:v for k,v in kwargs.items() if k in base_config.keys()}
+
+        base_config.update(kwargs)
+        return base_config
+
     def prepare_inference(self):
 
         if not hasattr(self, 'model'): self.load_model()
@@ -176,16 +187,16 @@ class GenModelWrap(BaseModelWrap):
     
     def get_generation_config(self, **kwargs):
 
-        from transformers import GenerationConfig
-
         generation_config=self.generation_config
-        if kwargs.get('generation_config'): 
+        if kwargs.get('generation_config'):
             generation_config.update(**kwargs.get('generation_config'))
         else:
-            kwargs=filter_kwargs(kwargs, ref=GenerationConfig)
+            kwargs=filter_kwargs(kwargs, ref=self.generation_config)
             generation_config.update(**kwargs)
 
         generation_config=GenerationConfig.from_dict(generation_config)
+
+        self.logger.info(f'generation_config: {generation_config}')
 
         return generation_config
 
@@ -222,16 +233,18 @@ class GenModelWrap(BaseModelWrap):
             torch.cuda.empty_cache()
             self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
 
-
-
     def get_data_collator(self, **kwargs):
+
         from transformers import DataCollatorForSeq2Seq
         data_collator_config=self.data_collator_config
-        if kwargs.get('data_collator_config'): 
-            data_collator_config.update(kwargs.get('data_collator_config'))
-        else:
-            kwargs=filter_kwargs(kwargs, ref=DataCollatorForSeq2Seq)
-            data_collator_config.update(kwargs)
+
+        # if kwargs.get('data_collator_config'): 
+        #     data_collator_config.update(kwargs.get('data_collator_config'))
+        # else:
+        #     kwargs=filter_kwargs(kwargs, ref=data_collator_config)
+        #     data_collator_config.update(kwargs)
+
+        data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
         
         data_collator=DataCollatorForSeq2Seq(
             model=self.model,
@@ -247,12 +260,14 @@ class GenModelWrap(BaseModelWrap):
         
         from torch.utils.data import DataLoader
 
-        dataloader_config=self.dataloader_config
-        if kwargs.get('dataloader_config'): 
-            dataloader_config.update(**kwargs.get('dataloader_config'))
-        else:
-            kwargs=filter_kwargs(kwargs, ref=DataLoader)
-            dataloader_config.update(**kwargs)
+        # dataloader_config=self.dataloader_config
+        # if kwargs.get('dataloader_config'): 
+        #     dataloader_config.update(**kwargs.get('dataloader_config'))
+        # else:
+        #     kwargs=filter_kwargs(kwargs, ref=dataloader_config)
+        #     dataloader_config.update(**kwargs)
+
+        dataloader_config=self.get_updated_config(kwargs, config_key='dataloader_config')
 
         dataloader=DataLoader(
             ds,
@@ -264,12 +279,13 @@ class GenModelWrap(BaseModelWrap):
 
     def generation_step(self, inputs, **kwargs):
 
-        generation_config=self.get_generation_config(**kwargs)
+        generation_config=self.get_updated_config(kwargs, config_key='generation_config')
+        self.logger.info(f"generation_config: {generation_config}")
 
         inputs.to('cuda')
 
         outputs=self.model.generate(
-            generation_config=generation_config,
+            generation_config=GenerationConfig.from_dict(generation_config),
             tokenizer=self.inference_tokenizer,
             **inputs)
         
@@ -280,6 +296,8 @@ class GenModelWrap(BaseModelWrap):
     def generation_loop(self, dataset, **kwargs):
 
         self.prepare_inference()
+
+        self.logger.info(f"kwargs: {kwargs}")
 
         dataloader=kwargs.get('dataloader', self.get_dataloader(dataset,**kwargs))
         self._dataloader=dataloader
@@ -294,6 +312,7 @@ class GenModelWrap(BaseModelWrap):
         all_losses = EvalLoopContainer(do_nested_concat=True, padding_index=-100)
 
         num_batches=len(dataloader)
+
         for step, inputs in enumerate(dataloader):
 
             input_ids, label_ids, pred_ids,all_ids, losses  = None, None, None, None, None
@@ -301,10 +320,7 @@ class GenModelWrap(BaseModelWrap):
             input_ids=inputs.get('input_ids',None)
             label_ids=inputs.get('labels',None)
 
-
-
             self.logger.info(f'batch {step+1}/{num_batches}')
-
             all_ids=self.generation_step(inputs, **kwargs)
 
      

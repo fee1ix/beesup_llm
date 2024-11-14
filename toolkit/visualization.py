@@ -121,7 +121,8 @@ def assign_pca_coords(embs_df, n_components=3):
 import plotly.graph_objects as go
 GO_LAYOUT=go.Layout(
         title="PCA reduced Embedding-Space",
-        #width=1700, height=800,
+        height=500,
+        autosize=True,  # Enables automatic resizing
         scene=dict(
             bgcolor='black',       # Background color of the 3D scene
             xaxis=dict(backgroundcolor="grey", gridcolor="darkgrey"),

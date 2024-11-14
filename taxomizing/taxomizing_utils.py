@@ -3,57 +3,10 @@ import numpy as np
 
 from ..toolkit.setup_utils import *
 
-def assign_data_tree(node, df):
+def is_normalized_embs(embs):
+    norm_embs = np.linalg.norm(embs, axis=1)
+    return np.allclose(norm_embs, 1, atol=1e-6) # check if all embeddings are normalized
 
-    # Base case: if the node is a leaf
-    if node.is_leaf():
-        # Get the corresponding embedding from knowledge_df by the leaf node ID
-        node.emb = df.iloc[node.id]['emb']
-        node.label = df.iloc[node.id]['label']
-        node.chunk = df.iloc[node.id]['chunk']
-        return node.emb
-    
-    else:
-        # Recursively assign embeddings to the left and right children
-        left_emb = assign_data_tree(node.left, df)
-        right_emb = assign_data_tree(node.right, df)
-        
-        # Compute the average embedding for the parent node
-        node.emb = np.mean([left_emb, right_emb], axis=0)
-        node.label= f"ID: {node.id}<br>DIST: {node.dist:.2f}<br>N: {node.count}"
-        node.chunk = None
-        return node.emb
-    
-def get_node_data(tree):
-
-    def listify_tree(node):
-        """
-        Recursively collect attributes from the tree into a list.
-        
-        Each node's attributes include: node_id, left_child_id, right_child_id, color, and embedding.
-        """
-        node_row = {
-            'node_id': node.id,
-            'dist': node.dist,
-            'n_children': node.count,
-            'left_child_id': node.left.id if node.left else None,
-            'right_child_id': node.right.id if node.right else None,
-            'is_leaf': node.is_leaf(),
-            'color': node.color,
-            'emb': node.emb,
-            'label': node.label,
-            'chunk': node.chunk,
-        }
-        node_data.append(node_row)
-        
-        if not node.is_leaf():
-            listify_tree(node.left)
-            listify_tree(node.right)
-
-    node_data=[]
-    listify_tree(tree)
-
-    return node_data
 
 def nodes_df_from_hdbscan(clusterer,chunks_df):
 
@@ -77,6 +30,62 @@ def nodes_df_from_hdbscan(clusterer,chunks_df):
     nodes_df.loc[nodes_df['is_leaf'], 'cid'] = chunks_df['cid'].values
 
     return nodes_df
+
+
+def assign_data_tree(node, df):
+
+    # Base case: if the node is a leaf
+    if node.is_leaf():
+        # Get the corresponding embedding from knowledge_df by the leaf node ID
+        node.emb = df.iloc[node.id]['emb']
+        node.label = df.iloc[node.id]['label']
+        node.chunk = df.iloc[node.id]['chunk']
+        return node.emb
+    
+    else:
+        # Recursively assign embeddings to the left and right children
+        left_emb = assign_data_tree(node.left, df)
+        right_emb = assign_data_tree(node.right, df)
+        
+        # Compute the average embedding for the parent node
+        node.emb = np.mean([left_emb, right_emb], axis=0)
+        node.label= f"ID: {node.id}<br>DIST: {node.dist:.2f}<br>N: {node.count}"
+        node.chunk = None
+        return node.emb
+
+
+def propagate_mean(tree, key, return_df=False):
+
+    if isinstance(tree,pd.DataFrame):
+        tree=to_anytree(tree)
+        return_df=True
+
+    def _recursive(node, key):
+
+        if not node.children:  # Base case: if it's a leaf node, return its embedding
+            return getattr(node,key) if hasattr(node, key) else None
+
+        # Collect embeddings from all descendants
+        embs = []
+        for child in node.children:
+            child_embedding = _recursive(child, key)
+            if child_embedding is not None:
+                embs.append(child_embedding)
+        
+        # Calculate the mean embedding if there are any valid embeddings
+        if embs:
+            setattr(node,key,np.mean(embs, axis=0))
+        else:
+            setattr(node,key,None) # Or np.zeros(...), depending on your preference
+    
+        return getattr(node,key)
+    
+    _recursive(tree, key)
+    
+    if return_df:
+        tree=to_nodes_df(tree)
+    
+    return tree
 
 def add_root_row(nodes_df):
 
@@ -193,3 +202,35 @@ def to_nodes_df(tree):
 
 
 
+
+def is_member(node):
+    """Check if the node or any of its descendants has a 'cid' not equal to -1 or np.nan."""
+    if node.cid not in [-1, np.nan]:
+        return True
+    return any(is_member(descendant) for descendant in node.children)
+
+def get_member_tree(tree):
+
+    new_nodes={}
+    for node in [tree] + list(tree.descendants):
+        #if not any([True if n.cid in [-1, np.nan] else False for n in node.descendants]) or node.cid in (): continue
+
+        if not is_member(node): continue
+
+        new_nodes[node.id] = Node(node.id)
+
+        # Set the parent if it exists in the filtered nodes
+        if node.parent and node.parent.id in new_nodes:
+            new_nodes[node.id].parent = new_nodes[node.parent.id]
+
+
+        for k,v in node.__dict__.items():
+            if k in ['is_leaf','is_root','size','depth','height']: continue
+            if k.startswith('_'): continue
+            new_nodes[node.id].__setattr__(k,v)
+
+
+    # Step 4: Identify disconnected components and handle them as independent trees or under a new root
+    for node in new_nodes.values():
+        if node.parent is None:  # Identify root nodes of disconnected components
+            return node

@@ -1,6 +1,7 @@
 import re
 import os
 import yaml
+import copy
 
 
 def load_yaml(path):
@@ -102,6 +103,10 @@ def hasattr_or_key(obj, key):
         return key in obj
     # Otherwise, check if it's an object and has the attribute
     return hasattr(obj, key)
+
+def hasattrs_or_keys(obj, keys):
+    return all(hasattr_or_key(obj, key) for key in keys)
+
 
 def getattr_or_key(obj, key, val=None):
     # Check if it's a dictionary and contains the key
@@ -223,8 +228,10 @@ def get_config_from_none(**kwargs):
 
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
-    if not os.path.exists(f'{parent_dir_path}'):
-        os.makedirs(f'{parent_dir_path}', exist_ok=False)
+
+    # if not os.path.exists(f'{parent_dir_path}'):
+    #     os.makedirs(f'{parent_dir_path}', exist_ok=False)
+
     id = get_max_id(parent_dir_path) + 1
     name = f"{str(id).zfill(4)}_{type}"
 

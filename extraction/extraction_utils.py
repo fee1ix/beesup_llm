@@ -52,6 +52,8 @@ def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shot
     return prompt_messages
 
 
+
+
 def pydantic_parse(completion,exclude_none=True):
 
     is_valid=False
