@@ -1,4 +1,4 @@
-import re
+import regex as re
 
 import copy
 import torch
@@ -303,8 +303,8 @@ def get_observation_span(idx,json_string,observations_span=None,verbose=False):
     else:
         #for i,observation in enumerate(re.finditer(r'( *{\s*[^{}]*?\s*\})',json_string[l0:l1])):
         #for i,observation in enumerate(re.finditer(r'{((?:[^{}]|(?R))*)}',json_string[l0:l1])):
-        for i,observation in enumerate(re.finditer(r'(\{(?:[^{}]++|(?R))*\})',json_string[l0:l1])):
 
+        for i,observation in enumerate(re.finditer(r'(\{(?:[^{}]++|(?R))*\})',json_string[l0:l1])):
 
             if i+1==idx:
                 o0,o1=observation.span(1)
@@ -331,6 +331,7 @@ def get_item_span(key='.*?',val='.*?',json_string='',observation_span=None,idx=N
     elif isinstance(val,bool): item_pattern=fr'"(?P<key>{key})"\s*:\s*(?P<val>true|false)'
     elif isinstance(val,list): item_pattern=fr'"(?P<key>{key})"\s*:\s*(?P<val>\[(?:[^\[\]]|(?P>val))*\])'
     elif isinstance(val,dict): item_pattern=fr'"(?P<key>{key})"\s*:\s*(?P<val>\{{(?:[^{{}}]*|(?P>val))*\}})'
+
     else: item_pattern=fr'"(?P<key>l{key})"\s*:\s*(?P<val>.*?)[\s,]*$'
 
     item_span, key_span, value_span = None, None, None
