@@ -1,5 +1,6 @@
 
 import os
+import warnings
 from .toolkit import *
 from .toolkit.setup_utils import *
 
@@ -86,46 +87,48 @@ class BaseDirectory(object):
         kwargs.update(self.get_config())
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
 
+        for k,v in kwargs.items():
+            setattr(self,k,v)
+
         config_dict=get_config_from_ref(ref,**kwargs)
 
         self.update_attributes(config_dict, overwrite=True)
         self.logger.info(f"{self.name.upper()} initialised")
 
     def reinit_config(self):
-
         new_config=get_config_from_none(type=self.type)
         self.update_attributes(new_config, overwrite=True)
 
+    def get_updated_config(self, kwargs, config_key='some_config'):
 
+        base_config=getattr(self,config_key)
+
+        if config_key in kwargs: kwargs.update(kwargs.get(config_key))
+
+        kwargs={k:v for k,v in kwargs.items() if k in base_config.keys()}
+
+        base_config.update(kwargs)
+        return base_config
 
     def spawn_config(self):
-
 
         if not os.path.exists(f'{self.parent_dir_path}'):
             os.makedirs(f'{self.parent_dir_path}', exist_ok=False)
 
-        old_config=None
+        
         if os.path.exists(f'{self.path}/config.yaml'):
             old_config = load_dict(f'{self.path}/config.yaml')
 
-        if old_config != self.get_config():
+            if old_config != self.get_config():
+                warnings.warn(f"Already existing. Spawn as new instance.")
+                self.reinit_config()
 
 
+        if not os.path.exists(f'{self.path}'):
+            os.makedirs(f'{self.path}', exist_ok=False)
 
-
-
-
-
-
-
-        
-        
-
-            with open(f'{self.path}/config.yaml', 'r') as file:
-                config = yaml.safe_load(file)
-                self.update_attributes(config, overwrite=True)
-
-
+        set_config(self.get_config())
+        self.logger.info(f"{self.name.upper()} config spawned at {self.path}")
 
 
     def update_attributes(self, new_dict, overwrite=True):
@@ -143,7 +146,6 @@ class BaseDirectory(object):
     def is_spawned(self):
         return os.path.exists(f'{self.path}')
 
-
     def get_config(self):
 
         config = {k: getattr(self, k) for k in self._config_key_order if hasattr(self, k)}
@@ -156,15 +158,9 @@ class BaseDirectory(object):
         return config
 
     def spawn(self):
-
-        if not os.path.exists(f'{self.path}'):
-            os.makedirs(f'{self.path}', exist_ok=False)
-
-        set_config(self.get_config())
-        logging.info(f"{self.name.upper()} spawned at {self.path}")
+        self.spawn_config()
 
     def __repr__(self):
-
         return f"{self.name} {type(self)}"
 
 
