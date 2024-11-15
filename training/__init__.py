@@ -3,12 +3,11 @@ from ..toolkit.setup_utils import *
 from ..toolkit.llm_utils import *
 
 from beesup_llm.dataset import BaseDataset
-from beesup_llm.model import BaseModelWrap
+from beesup_llm.model import *
 import logging
 
 
 import torch
-
 import types
 
 from trl import SFTTrainer
@@ -17,45 +16,35 @@ from transformers import TrainingArguments
 from transformers import DataCollatorForSeq2Seq
 
 
-class BaseTraining(BaseDirectory):
+class BaseTrainerWrap(BaseDirectory):
+    type = 'trainer'
 
-    def __new__(cls, ref=None, dataset_ref=None, model_ref=None):
+    @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'type') == ['training']: return True
+        if LoraTraining.matches(ref): return True
+        return False
 
-        instance = super().__new__(cls)
-        instance.__init__(ref, dataset_ref, model_ref)
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
 
-        if hasattr(instance, 'lora_config'):
- 
-            instance = super(BaseTraining,LoraTraining).__new__(LoraTraining)
+        pre_config = get_config_from_ref(ref, **kwargs)
+    
+        if LoraTrainerWrap.matches(pre_config):
+            return LoraTrainerWrap(ref=pre_config, **kwargs)
         
-        else:
-            instance = super().__new__(cls)
-  
-        return instance
+        return cls(ref=pre_config, **kwargs)
 
-    def __init__(self, ref=None, dataset_ref=None, model_ref=None):
-
-        self.type='training'
-        super().__init__(ref)
+    def __init__(self, ref=None, model_ref=None, dataset_ref=None, **kwargs):
+        super().__init__(ref,  model_ref=None, dataset_ref=None, **kwargs)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['model','inference_tokenizer','training_tokenizer'])
-
-        if hasattr(self, 'dataset_config'):
-            dataset_ref = self.dataset_config
-        
-        if hasattr(self, 'model_config'):
-            model_ref = self.model_config
-
-        self._dataset=BaseDataset(dataset_ref)
-        self.dataset_config=self._dataset.get_config()
-
-        self._modelwrap=BaseModelWrap(model_ref)
-        self.model_config=self._modelwrap.get_config()
-
+        self._config_keys_to_exclude.extend(['modelwrap','model','dataset','trainer','model_config'])
+        self._model_is_prepared=False
 
         self._default_config=dict(
-            done = False,
             args=dict(
                 seed=42,
                 auto_find_batch_size=True,
@@ -81,14 +70,21 @@ class BaseTraining(BaseDirectory):
                 max_seq_length=4096,
                 packing=False
             ),
+            
             data_collator_config=dict(
                 padding='longest',
                 label_pad_token_id =-100,
             )
         )
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
-
         self.update_attributes(self._default_config, overwrite=False)
+
+        if model_ref is not None:
+            self.modelwrap=GenModelWrap.from_ref(model_ref)
+
+        if dataset_ref is not None:
+            self.dataset=BaseDataset.from_ref(dataset_ref)
+
 
     def run(self, trainer, **kwargs):
 
@@ -138,15 +134,9 @@ class BaseTraining(BaseDirectory):
 
         # Set model to evaluation mode
         model.eval()
-        # if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
-        #     self.optimizer.eval()
 
-        # Optional logging for batch size and dataset size
         batch_size = args.eval_batch_size
-        # self.logger.info(f"\n***** Running {description} *****")
-        # self.logger.info(f"  Batch size = {batch_size}")
-        # if hasattr(dataloader, "dataset"):
-        #     self.logger.info(f"  Num examples = {len(dataloader.dataset)}")
+
 
         print(vars(dataloader))
 
@@ -181,28 +171,17 @@ class BaseTraining(BaseDirectory):
         # Wrap in EvalLoopOutput for compatibility
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(all_labels))
         
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+class LoraTrainerWrap(BaseTrainerWrap):
+    type = 'lora_trainer'
 
+    @staticmethod
+    def matches(ref):
+        if hasattr_or_key(ref,'lora_config'): return True
+        return False
 
-        # # Initialize metrics and perform the evaluation loop
-        # all_preds, all_labels, all_losses = [], [], []
-        # for step, inputs in enumerate(dataloader):
-        #     with torch.no_grad():
-        #         losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only=False)
-        #         all_losses.append(losses)
-        #         all_preds.append(logits)
-        #         all_labels.append(labels)
-
-        # # Gather metrics, averaging loss if available
-        # avg_loss = torch.stack(all_losses).mean().item() if all_losses else None
-        # metrics = {f"{metric_key_prefix}_loss": avg_loss} if avg_loss is not None else {}
-
-        # return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(dataloader.dataset))
-
-
-class LoraTraining(BaseTraining):
-
-    def __init__(self, ref=None, dataset_ref=None, model_ref=None):
-        super().__init__(ref, dataset_ref, model_ref)
+    def __init__(self, ref=None, **kwargs):
+        super().__init__(ref, **kwargs)
 
         self._default_config=dict(
             lora_config=dict(
@@ -219,17 +198,23 @@ class LoraTraining(BaseTraining):
 
         self.update_attributes(self._default_config, overwrite=False)
 
-    
-    def get_lora_model(self, model):
+    def prepare_model(self,model=None, **kwargs):
 
-        self.logger.info(f"{self.name.upper()}\tprepare lora model")
+        if self._model_is_prepared:
+            self.logger.info("Model is already prepared")
+            return
+        
+        if model is None:
+            model=self.model
 
-        from peft import prepare_model_for_kbit_training
+        #model=model.unload()
+        self.logger.info()
+        
         model.gradient_checkpointing_enable()
         model = prepare_model_for_kbit_training(model)
 
-        from peft import LoraConfig, get_peft_model
-        lora_config = LoraConfig(**self.lora_config)
+        lora_config=self.get_updated_config(kwargs, config_key='lora_config')
+        lora_config = LoraConfig(**lora_config)
 
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
@@ -251,10 +236,48 @@ class LoraTraining(BaseTraining):
             'lora_scale':lora_scale,
         }
 
-        set_config(self.get_config())
-
-        return model
+        self.model=model
+        self._model_is_prepared=True
+        return 
     
+    def load_trainer(self, **kwargs):
+
+        tokenizer = kwargs.get('tokenizer', getattr(self, 'tokenizer', None))
+        model = kwargs.get('model', getattr(self, 'model', None))
+        
+        self.prepare_model(model=model)
+
+        lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
+        args=TrainingArguments(**self.get_updated_config(kwargs, config_key='args'))
+
+        data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**data_collator_config)
+        sftt_args=self.get_updated_config(kwargs, config_key='sftt_args')
+
+        trainer = SFTTrainer(
+            model=self.model,
+            train_dataset=kwargs.get('train_dataset', getattr(self, 'train_dataset', None)),
+            eval_dataset=kwargs.get('eval_dataset', getattr(self, 'eval_dataset', None)),
+            peft_config=lora_config,
+            args=args,  
+            data_collator=data_collator,
+            **sftt_args
+        )
+
+        self.trainer=trainer
+        return
+
+
+    def train(self, **kwargs):
+
+        self.trainer.train()
+        
+
+
+
+        
+
+
     def get_trainer(self, **kwargs):
 
         model=kwargs.get('model', None)
@@ -267,7 +290,7 @@ class LoraTraining(BaseTraining):
 
         train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
 
-        from peft import LoraConfig
+        
 
         trainer = SFTTrainer(
             model=model,
