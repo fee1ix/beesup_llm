@@ -22,6 +22,9 @@ def load_dict(ref):
 
 def get_ids(parent_path=None, type='', from_id=0, to_id=10e9):
     id_pattern=r'^(\d{4,5})_'+type
+
+    if not os.path.exists(f'{parent_path}'): return []
+
     fns=os.listdir(parent_path)
     fns=[fn for fn in fns if bool(re.match(id_pattern,fn))]
     ids=[int(re.findall(id_pattern,fn)[0]) for fn in fns]
