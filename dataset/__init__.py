@@ -10,8 +10,24 @@ import logging
 class BaseDataset(BaseDirectory):
     type='dataset'
 
-    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None):
-        super().__init__(ref)
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+
+        pre_config = get_config_from_ref(ref, **kwargs)
+
+        return cls(ref=pre_config, **kwargs)
+
+    @classmethod
+    def from_df(cls, dataset_df, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} dataset_df={dataset_df}, kwargs = {kwargs}\n")
+
+        return cls(dataset_df=dataset_df, **kwargs)
+
+    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None,**kwargs):
+        super().__init__(ref,**kwargs)
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend(['dataset_df','emb_model'])
 
@@ -52,6 +68,15 @@ class BaseDataset(BaseDirectory):
 
         logging.info(f"{self.name.upper()} spawned at {self.path}")
   
+    #def get_df(self):
+
+
+
+
+
+
+
+
     def arrange_sample(self, sample, tokenizer):
 
         if isinstance(sample.get('prompt_messages'),list) and isinstance(sample.get('gold_message'),list):
