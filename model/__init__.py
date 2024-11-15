@@ -35,8 +35,13 @@ class BaseModelWrap(BaseDirectory):
         kwargs.update(get_cls_attrs(cls))
         cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
 
+        if isinstance(ref, cls): return ref
+
         pre_config = get_config_from_ref(ref, **kwargs)
 
+        
+        #if hasattr(ref,'model'): kwargs['model']=ref.model
+            
         if GenModelWrap.matches(pre_config):
             return GenModelWrap(ref=pre_config, **kwargs)
         
@@ -49,7 +54,9 @@ class BaseModelWrap(BaseDirectory):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
         super().__init__(ref, **kwargs)
         self._config_key_order.extend(['name_or_path'])
-        self._config_keys_to_exclude.extend(['model'])
+        self._config_keys_to_exclude.extend(['model'])#
+
+        
 
         self._default_config=dict()
         self.update_attributes(self._default_config, overwrite=False)
@@ -88,7 +95,11 @@ class GenModelWrap(BaseModelWrap):
         cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
 
         pre_config = get_config_from_ref(ref, **kwargs)
-    
+
+        if hasattr(ref,'model'): kwargs['model']=ref.model
+        if hasattr(ref,'inference_tokenizer'): kwargs['inference_tokenizer']=ref.inference_tokenizer
+        if hasattr(ref,'training_tokenizer'): kwargs['training_tokenizer']=ref.training_tokenizer
+
         # if PeftLlamaModelWrap.matches(pre_config):
         #     return PeftLlamaModelWrap.from_ref(ref=pre_config, **kwargs)
 
@@ -99,7 +110,6 @@ class GenModelWrap(BaseModelWrap):
     
     def __init__(self, ref=None, **kwargs):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
-
         super().__init__(ref, **kwargs)
 
         self._config_key_order.extend([])
@@ -137,16 +147,11 @@ class GenModelWrap(BaseModelWrap):
         
         self.update_attributes(self._default_config, overwrite=False)
 
-    def get_updated_config(self, kwargs, config_key='some_config'):
+    def prepare_training(self):
+        
+        if not hasattr(self, 'model'): self.load_model()
+        if not hasattr(self, 'training_tokenizer'): self.load_training_tokenizer()
 
-        base_config=getattr(self,config_key)
-
-        if config_key in kwargs: kwargs.update(kwargs.get(config_key))
-
-        kwargs={k:v for k,v in kwargs.items() if k in base_config.keys()}
-
-        base_config.update(kwargs)
-        return base_config
 
     def prepare_inference(self):
 
@@ -444,9 +449,6 @@ class GenModelWrap(BaseModelWrap):
         else:
             return self.training_tokenizer
             
-
-
-
 class LlamaModelWrap(GenModelWrap):
 
     @staticmethod
@@ -456,7 +458,7 @@ class LlamaModelWrap(GenModelWrap):
 
     def __init__(self, ref=None, **kwargs):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
-        super().__init__(ref)
+        super().__init__(ref, **kwargs)
 
         self._config_key_order.extend(['name_or_path','base_model'])
         self._config_keys_to_exclude.extend([])
@@ -492,7 +494,7 @@ class PeftLlamaModelWrap(LlamaModelWrap):
         return False
 
     def __init__(self, ref=None, **kwargs):
-        super().__init__(ref)
+        super().__init__(ref,**kwargs)
 
     def load_model(self):
 
