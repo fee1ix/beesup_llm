@@ -81,8 +81,6 @@ class ExtractionPipeline(BaseDirectory):
 
         if model_ref is not None:
             self.modelwrap=GenModelWrap.from_ref(model_ref)
-            self.gen_model_config=self.modelwrap.get_config()
-            #self.tokenizer=self.modelwrap.get_inference_tokenizer()
     
     def get_prompting_config(self, **kwargs):
 
