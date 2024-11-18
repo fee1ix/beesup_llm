@@ -17,6 +17,8 @@ class BaseDataset(BaseDirectory):
 
         pre_config = get_config_from_ref(ref, **kwargs)
 
+        #if hasattr(ref,'dataset_df'): kwargs['dataset_df']=ref.dataset_df
+
         return cls(ref=pre_config, **kwargs)
 
     @classmethod
@@ -26,8 +28,8 @@ class BaseDataset(BaseDirectory):
 
         return cls(dataset_df=dataset_df, **kwargs)
 
-    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None,**kwargs):
-        super().__init__(ref,**kwargs)
+    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None, **kwargs):
+        super().__init__(ref, **kwargs)
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend(['dataset_df','emb_model'])
 
@@ -46,6 +48,9 @@ class BaseDataset(BaseDirectory):
             parent_config=BaseDataset(parent_ref).get_config()
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
+    
+    def get_df_split(self, split='train'):
+        return self.dataset_df[self.dataset_df.split==split].copy()
 
 
     def spawn(self):
