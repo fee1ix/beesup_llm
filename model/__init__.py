@@ -1,5 +1,7 @@
 from beesup_llm import *
+from ..toolkit.llm_utils import *
 from ..toolkit.setup_utils import *
+
 
 import logging
 
@@ -152,7 +154,6 @@ class GenModelWrap(BaseModelWrap):
         if not hasattr(self, 'model'): self.load_model()
         if not hasattr(self, 'training_tokenizer'): self.load_training_tokenizer()
 
-
     def prepare_inference(self):
 
         if not hasattr(self, 'model'): self.load_model()
@@ -168,7 +169,6 @@ class GenModelWrap(BaseModelWrap):
         if isinstance(the_input, str): 
             inputs=inference_tokenizer(the_input,return_tensors='pt').to('cuda')
             
-
         if isinstance(the_input, list):
             if all(isinstance(item, str) for item in the_input):
                 inputs=inference_tokenizer.batch_encode_plus(the_input,padding=True, return_tensors='pt').to('cuda')
@@ -370,27 +370,97 @@ class GenModelWrap(BaseModelWrap):
         
         return pred_completions
 
-    def __call__(self, input, stream=False, **kwargs):
+    def get_inputs_from_str(self, the_input, as_chat=False):
 
-        self.prepare_inference()
-        inputs=self.prepare_inference_inputs(input)
-        is_batch=inputs['input_ids'].shape[0]>1
+        tokenizer=self.get_inference_tokenizer()
 
-        if stream and not is_batch:
+        if as_chat:
+            inputs=tokenizer.apply_chat_template([{'role':'user','content':the_input}], return_dict=True,return_tensors='pt').to('cuda')
+        else:
+            inputs=tokenizer(the_input,return_tensors='pt').to('cuda')
+        
+        return inputs
+    
+    def get_pred(self, the_input, stream=False, **kwargs):
+
+        if stream:
             pred_completion=""
-            for new_token in self.generate_stream(input_text_or_messages=inputs, **kwargs):
+            for new_token in self.generation_stream(input_text_or_messages=inputs, **kwargs):
                 pred_completion += new_token
                 print(new_token,end='',flush=True)
-        
         else:
-            outputs=self.generate(inputs, **kwargs)
-            self.outputs=outputs # for debugging
-            pred_completions=self.get_pred_completions(inputs, outputs)
+            inputs=self.get_inputs_from_str(the_input)
+            outputs=self.generation_step(inputs, **kwargs)
+            pred_completion=self.get_pred_completions(inputs, outputs)[0]
 
-        if not is_batch:
-            return pred_completions[0]
+            return pred_completion
+    
+    def get_pred_chat(self, messages, stream=False, **kwargs):
+
+        if stream:
+            pred_completion=""
+            for new_token in self.generation_stream(input_text_or_messages=messages, **kwargs):
+                pred_completion += new_token
+                print(new_token,end='',flush=True)
         else:
-            return pred_completions
+            tokenizer=self.get_inference_tokenizer()
+            inputs=tokenizer(messages,return_tensors='pt').to('cuda')
+            outputs=self.generation_step(inputs, **kwargs)
+            pred_completion=self.get_pred_completions(inputs, outputs)[0]
+        
+        return pred_completion
+
+
+    def get_pred_df(self, df, **kwargs):
+        from datasets import Dataset
+        tokenizer=self.get_inference_tokenizer()
+
+        if 'prompt_messages' in df.columns:
+            ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, tokenizer),axis=1).to_list())
+            outputs=self.generation_loop(ds,**kwargs)
+            outputs_df=to_outputs_df(outputs,tokenizer=tokenizer)
+            df['pred_completion']=outputs_df['pred_completion'].values
+
+        return df
+
+
+    def __call__(self, the_input, stream=False, as_chat=False, **kwargs):
+
+        if isinstance(the_input, str):
+
+            if as_chat:
+                chat_messages=[{'role':'user','content':the_input}]
+                return self.get_pred_chat(chat_messages, stream=stream, **kwargs)
+            else:
+                return self.get_pred(the_input, stream=stream, as_chat=as_chat, **kwargs)
+
+        elif isinstance(the_input, list):
+            return self.get_pred_chat(the_input, stream=stream, **kwargs)
+
+        
+        elif isinstance(the_input, pd.DataFrame):
+            return self.get_pred_df(the_input, **kwargs)
+
+
+        # self.prepare_inference()
+        # inputs=self.prepare_inference_inputs(input)
+        # is_batch=inputs['input_ids'].shape[0]>1
+
+        # if stream and not is_batch:
+        #     pred_completion=""
+        #     for new_token in self.generate_stream(input_text_or_messages=inputs, **kwargs):
+        #         pred_completion += new_token
+        #         print(new_token,end='',flush=True)
+        
+        # else:
+        #     outputs=self.generate(inputs, **kwargs)
+        #     self.outputs=outputs # for debugging
+        #     pred_completions=self.get_pred_completions(inputs, outputs)
+
+        # if not is_batch:
+        #     return pred_completions[0]
+        # else:
+        #     return pred_completions
         
 
 
