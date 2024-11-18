@@ -26,8 +26,14 @@ def nodes_df_from_hdbscan(clusterer,chunks_df):
     nodes_df['label']=nodes_df.apply(lambda x: f"CLUSTER WITH {x['size']} MEMBERS", axis=1)
 
     nodes_df.loc[nodes_df['is_leaf'], 'label'] = chunks_df['label'].values
+    nodes_df.loc[nodes_df['is_leaf'], 'subject'] = chunks_df['subject'].values
+    nodes_df.loc[nodes_df['is_leaf'], 'predicate'] = chunks_df['predicate'].values
+    nodes_df.loc[nodes_df['is_leaf'], 'object'] = chunks_df['object'].values
+    
     nodes_df.loc[nodes_df['is_leaf'], 'emb'] = chunks_df['emb'].values
     nodes_df.loc[nodes_df['is_leaf'], 'cid'] = chunks_df['cid'].values
+
+
 
     return nodes_df
 
