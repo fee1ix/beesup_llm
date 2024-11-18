@@ -85,7 +85,6 @@ class BaseTrainerWrap(BaseDirectory):
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
 
-
     def run(self, trainer, **kwargs):
 
         #trainer = kwargs.get('trainer', self.get_trainer(**kwargs))
@@ -170,7 +169,9 @@ class BaseTrainerWrap(BaseDirectory):
 
         # Wrap in EvalLoopOutput for compatibility
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(all_labels))
-        
+
+
+
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 class LoraTrainerWrap(BaseTrainerWrap):
     type = 'lora_trainer'
@@ -198,17 +199,29 @@ class LoraTrainerWrap(BaseTrainerWrap):
 
         self.update_attributes(self._default_config, overwrite=False)
 
+    def load_model(self, model, **kwargs):
+        if model is None:
+            if hasattr(self, 'model'):
+                self.logger.info("Model already attached")
+            elif hasattr(self, 'modelwrap'):
+                self.model=self.modelwrap.get_model()
+        else:
+            self.model=model
+        
+
+
     def prepare_model(self,model=None, **kwargs):
 
-        if self._model_is_prepared:
-            self.logger.info("Model is already prepared")
-            return
+        # if self._model_is_prepared:
+        #     self.logger.info("Model is already prepared")
+        #     return
         
-        if model is None:
-            model=self.model
+        self.load_model(model=model)
+    
+        model=self.model
 
         #model=model.unload()
-        self.logger.info()
+        self.logger.info('Preparing lora model')
         
         model.gradient_checkpointing_enable()
         model = prepare_model_for_kbit_training(model)
@@ -240,7 +253,38 @@ class LoraTrainerWrap(BaseTrainerWrap):
         self._model_is_prepared=True
         return 
     
-    def load_trainer(self, **kwargs):
+
+    def prepare_trainer(self, **kwargs):
+
+        self.prepare_model(**kwargs)
+
+        tokenizer = kwargs.get('tokenizer', getattr(self, 'tokenizer', None))
+        model = kwargs.get('model', getattr(self, 'model', None))
+        
+        lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
+        args=TrainingArguments(**self.get_updated_config(kwargs, config_key='args'))
+
+        data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**data_collator_config)
+        sftt_args=self.get_updated_config(kwargs, config_key='sftt_args')
+
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=kwargs.get('train_dataset', getattr(self, 'train_dataset', None)),
+            eval_dataset=kwargs.get('eval_dataset', getattr(self, 'eval_dataset', None)),
+            peft_config=lora_config,
+            args=args,  
+            data_collator=data_collator,
+            **sftt_args
+        )
+
+        self.trainer=trainer
+        return
+
+
+    def prepare(self, **kwargs):
+
+        self.prepare_model(**kwargs)
 
         tokenizer = kwargs.get('tokenizer', getattr(self, 'tokenizer', None))
         model = kwargs.get('model', getattr(self, 'model', None))
@@ -268,7 +312,7 @@ class LoraTrainerWrap(BaseTrainerWrap):
         return
 
 
-    def train(self, **kwargs):
+    def run(self, **kwargs):
 
         self.trainer.train()
         
