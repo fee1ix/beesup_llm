@@ -57,6 +57,15 @@ class ExtractionSample(object):
 class ExtractionPipeline(BaseDirectory):
     type='extraction_pipeline'
 
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+
+        pre_config = get_config_from_ref(ref, **kwargs)
+        
+        return cls(ref=pre_config, **kwargs)
+
     def __init__(self, ref=None, model_ref=None, **kwargs):
 
         super().__init__(ref, **kwargs)
@@ -93,12 +102,12 @@ class ExtractionPipeline(BaseDirectory):
 
         return prompting_config
 
-    def get_pred(self, report_passage, **kwargs):
+    def get_pred(self, report_passage, modelwrap, **kwargs):
 
         prompt_messages=get_prompt_messages(report_passage, **self.get_prompting_config(**kwargs))
 
         pred_completion=''
-        for new_token in self.modelwrap.generation_stream(prompt_messages):
+        for new_token in modelwrap.generation_stream(prompt_messages):
             pred_completion+=new_token
             print(new_token, end='', flush=True)
 
@@ -106,16 +115,25 @@ class ExtractionPipeline(BaseDirectory):
 
         return sample.pred_json
 
-    def get_pred_df(self, df, **kwargs):
+    def prepare_df(self, df, **kwargs):
         assert 'report_passage' in df.columns, "df must have 'report_passage' column"
         df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
+        return df
+    
+    def prepare_ds(self, df, tokenizer, **kwargs):
 
         from datasets import Dataset
-        ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
+        ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, tokenizer),axis=1).to_list())
+        return ds
 
-        generation_outputs=self.modelwrap.generation_loop(ds,**kwargs)
+    def get_pred_df(self, df, modelwrap, **kwargs):
+
+        df=self.prepare_df(df, **kwargs)
+        ds=self.prepare_ds(df, tokenizer=modelwrap.get_inference_tokenizer(), **kwargs)
+
+        generation_outputs=modelwrap.generation_loop(ds,**kwargs)
         self._generation_outputs=generation_outputs
-        generation_df=to_outputs_df(generation_outputs,tokenizer=self.modelwrap.get_inference_tokenizer())
+        generation_df=to_outputs_df(generation_outputs,tokenizer=modelwrap.get_inference_tokenizer())
         self._generation_df=generation_df
 
         df['pred_completion']=generation_df['pred_completion'].values
@@ -130,13 +148,18 @@ class ExtractionPipeline(BaseDirectory):
         return df
 
         
-    def __call__(self, the_input, **kwargs):
+    def __call__(self, the_input, model_ref=None, **kwargs):
+
+        if model_ref is not None:
+            modelwrap=GenModelWrap.from_ref(model_ref)
+
+        elif hasattr(self, 'modelwrap'): modelwrap=self.modelwrap
 
         if isinstance(the_input, str):
-            return self.get_pred(the_input, **kwargs)
+            return self.get_pred(the_input, modelwrap, **kwargs)
         
         elif isinstance(the_input, pd.DataFrame):
-            return self.get_pred_df(the_input, **kwargs)
+            return self.get_pred_df(the_input, modelwrap, **kwargs)
         
         return
 
