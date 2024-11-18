@@ -154,6 +154,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         nodes_df=nodes_df_from_hdbscan(self.clusterer,chunks_df)
         nodes_df=add_root_row(nodes_df)
         nodes_df=propagate_mean(nodes_df,key='emb')
+        nodes_df['dist']=nodes_df['lambda_val'].apply(lambda x: 1/x if pd.notna(x) else x)
         
 
         tree=to_anytree(nodes_df)
@@ -163,6 +164,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         member_tree=get_member_tree(tree)
         self.logger.info(f"member_tree.size: {member_tree.size}")
         member_df=to_nodes_df(member_tree)
+        #member_df['dist']=member_df['lambda_val'].apply(lambda x: 1/x if pd.notna(x) else x)
 
         self.chunks_df=chunks_df
         self.nodes_df=nodes_df
@@ -171,14 +173,6 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
         self.member_df=member_df
 
         return
-
-
-
-
-
-
-
-
 
 
 
