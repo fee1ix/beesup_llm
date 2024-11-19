@@ -7,28 +7,16 @@ from beesup_llm.dataset import BaseDataset
 from beesup_llm.training import *
 from beesup_llm.extraction.extraction_pipeline import *
 
-# from transformers import TrainerCallback
-# class CustomEvalCallback(TrainerCallback):
-#     def __init__(self, pipeline):
-#         self.pipeline = pipeline
-#         pass
 
-#     def on_epoch_end(self, args, state, control, **kwargs):
-
-#         trainer = kwargs['trainer']
-
-#         model = args['model']
-
-#         model = trainer._wrap_model(trainer.model, training=False, dataloader=args['eval_dataloader'])
 
 class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
 
-    def __init__(self, ref=None, dataset_ref=None, pipe_ref=None, model_ref=None, trainer_ref=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
         super().__init__(ref)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df'])
+        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','modelwrap','pipeline','dataset'])
 
         self._default_config=dict(
             done = False,
@@ -38,6 +26,19 @@ class ExtractionExperiment(BaseDirectory):
             generation_config=dict(
                 do_sample=False,
             ),
+
+            trainer_args=dict(
+                seed=42,
+                num_train_epochs=2,
+                learning_rate=0.0002,
+                output_dir=f"{self.path}",
+                save_strategy='no',
+                logging_strategy='steps',
+                logging_steps=1,
+                logging_first_step=True,
+                do_eval=False,
+            ),
+
         )
 
         self.update_attributes(self._default_config, overwrite=False)
@@ -47,114 +48,69 @@ class ExtractionExperiment(BaseDirectory):
 
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
-            self.train_df=self.dataset.get_df_split('train')
-            self.eval_df=self.dataset.get_df_split('eval')
-        
+
         if trainer_ref is not None:
             self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
 
-        if pipe_ref is not None:
-            self.pipe=ExtractionPipeline.from_ref(pipe_ref)
+        if pipeline_ref is not None:
+            self.pipeline=ExtractionPipeline.from_ref(pipeline_ref)
 
+    def load_data(self, **kwargs):
+        self.logger.info(f"Loading Data")
 
-            
-    @staticmethod
-    def custom_evaluation_loop(
-        self,
-        dataloader: DataLoader,
-        description: str,
-        prediction_loss_only: Optional[bool] = None,
-        ignore_keys: Optional[List[str]] = None,
-        metric_key_prefix: str = "eval",
-    ) -> EvalLoopOutput:
-        """
-        Minimal prediction/evaluation loop to prepare the model in evaluation state
-        and maintain compatibility with the original training setup.
-        """
-        args = self.args
-        model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+        assert hasattr(self, 'dataset'), "Dataset must be assigned before loading data"
+        assert hasattr(self, 'pipeline'), "Extraction Pipeline must be assigned before loading data"
+        assert hasattr(self, 'modelwrap'), "ModelWrap must be assigned before loading data"
 
-        # Handle model preparation if needed
-        if self.is_deepspeed_enabled and self.deepspeed is None:
-            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
+        train_df=self.dataset.get_df_splits('train')
+        eval_df=self.dataset.get_df_splits(['test','eval'])
 
-        if len(self.accelerator._models) == 0 and model is self.model:
-            model = self.accelerator.prepare_model(model, evaluation_mode=True)
-            self.model = model if self.is_fsdp_enabled else self.model
-            if model is not self.model:
-                self.model_wrapped = model
-            if self.is_deepspeed_enabled:
-                self.deepspeed = self.model_wrapped
+        self.modelwrap.load_training_tokenizer()
+        self.modelwrap.load_inference_tokenizer()
 
-        # Set model to evaluation mode
-        model.eval()
-        batch_size = args.eval_batch_size
+        train_df=self.pipeline.prepare_df_for_finetuning(train_df)
+        train_ds=self.pipeline.get_ds_for_finetuning(train_df, self.modelwrap.get_training_tokenizer()) # tokenizer type doesnt matter at this point, because padding is not applied
 
-
-
-
-
-
-
-        print(vars(dataloader))
-
-        modelwrap=BaseModelWrap(model)
-        modelwrap.load_inference_tokenizer()
-
-        inference_outputs=modelwrap.inference_loop(dataloader)
-        inference_df=get_inference_df(inference_outputs)
-
-        save_path=f'{self.args.output_dir}/checkpoint-{self.state.global_step}-inference_df.pkl'
-        inference_df.to_pickle(save_path)
-
-        # Example dimensions - adjust as per your dataloader and model output shapes
-        batch_size = self.args.eval_batch_size
-        num_batches = len(dataloader)
-        num_classes = 10  # Example, adjust as per model output
-
-        # Dummy placeholders shaped like real outputs
-        all_preds = [torch.zeros(batch_size, num_classes) for _ in range(num_batches)]
-        all_labels = [torch.zeros(batch_size) for _ in range(num_batches)]
-        all_losses = [torch.tensor(0.0) for _ in range(num_batches)]
-
-        # Gather metrics, with average loss as a dummy value
-        avg_loss = torch.stack(all_losses).mean().item()  # Example average loss calculation
-        metrics = {f"{metric_key_prefix}_loss": avg_loss}
-
-        # Convert lists of tensors into a single tensor or numpy array if required by EvalLoopOutput
-        all_preds = torch.cat(all_preds, dim=0).cpu().numpy()
-        all_labels = torch.cat(all_labels, dim=0).cpu().numpy()
-        all_losses = torch.stack(all_losses).cpu().numpy()
-
-        # Wrap in EvalLoopOutput for compatibility
-        return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(all_labels))
-
-
-    def prepare(self,**kwargs):
-        
-        dataset_df=self.dataset.dataset_df
-        dataset_df=self.pipe.prepare_df(dataset_df, **kwargs)
-
-        from datasets import Dataset
-        train_df=dataset_df[dataset_df.split=='train']
-        train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_completion(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
-
-        test_df=dataset_df[dataset_df.split=='test']
-        test_ds=Dataset.from_list(test_df.apply(lambda x: prepare_sample_for_chat_completion(x, self.modelwrap.get_inference_tokenizer()),axis=1).to_list())
-
-        self.trainwrap.model=self.modelwrap.model
-
-        self.trainwrap.prepare(
-            train_dataset=train_ds,
-            **kwargs
-        )
+        eval_df=self.pipeline.prepare_df_for_completion(eval_df)
+        eval_ds=self.pipeline.get_ds_for_completion(eval_df,  self.modelwrap.get_inference_tokenizer())
 
         self.train_df=train_df
-        self.train_ds=train_ds
+        self.eval_df=eval_df
 
-        self.test_df=test_df
-        self.test_ds=test_ds
-    
+        self.train_ds=train_ds
+        self.eval_ds=eval_ds
+
+    def load_trainer(self,**kwargs):
+        self.logger.info(f"Loading Trainer")
+        
+        self.load_data(**kwargs)
+
+        trainer_args=self.get_updated_config(kwargs, 'trainer_args')
+        model=self.modelwrap.get_model()
+
+        trainer= self.trainwrap.get_trainer(
+            model=model,
+            tokenizer=self.modelwrap.get_training_tokenizer(),
+            train_dataset=self.train_ds,
+            args=trainer_args,
+        )
+        self.trainer=trainer
+
+    def get_trainer(self, **kwargs):
+
+        trainer=getattr(self, 'trainer', None)
+        if trainer is None:
+            self.load_trainer()
+            trainer=self.trainer
+            del self.trainer
+            return trainer
+        
+        else:
+            return self.trainer
+
+
+
+
     def run(self,**kwargs):
 
         self.trainwrap.run(**kwargs)
