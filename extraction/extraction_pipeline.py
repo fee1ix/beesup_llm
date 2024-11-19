@@ -9,6 +9,8 @@ from beesup_llm.dataset import *
 
 from .extraction_utils import *
 
+from datasets import Dataset
+
 
 class ExtractionSample(object):
     
@@ -115,21 +117,34 @@ class ExtractionPipeline(BaseDirectory):
 
         return sample.pred_json
 
-    def prepare_df(self, df, **kwargs):
-        assert 'report_passage' in df.columns, "df must have 'report_passage' column"
+
+    def prepare_df_for_completion(self, df, **kwargs):
+        assert 'report_passage' in df.columns, "df must have 'prompt_messages' column"
         df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
         return df
     
-    def prepare_ds(self, df, tokenizer, **kwargs):
+    def prepare_df_for_finetuning(self, df, **kwargs):
+        assert 'gold_completion' in df.columns, "df must have 'gold_completion' column"
+        df=self.prepare_df_for_completion(df, **kwargs)
+        df['gold_message']=df['gold_completion'].apply(lambda x: [{'role':'assistant','content': x}])
+        return df
 
-        from datasets import Dataset
+    def get_ds_for_finetuning(self, df, tokenizer, **kwargs):
+        assert 'prompt_messages' in df.columns, "df must have 'prompt_messages' column"
+        assert 'gold_message' in df.columns, "df must have 'gold_message' column"
+        ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_finetuning(x, tokenizer),axis=1).to_list())
+        return ds
+    
+    def get_ds_for_completion(self, df, tokenizer, **kwargs):
+        assert 'prompt_messages' in df.columns, "df must have 'prompt_messages' column"
         ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, tokenizer),axis=1).to_list())
         return ds
 
+
     def get_pred_df(self, df, modelwrap, **kwargs):
 
-        df=self.prepare_df(df, **kwargs)
-        ds=self.prepare_ds(df, tokenizer=modelwrap.get_inference_tokenizer(), **kwargs)
+        df=self.prepare_df_for_completion(df, **kwargs)
+        ds=self.get_ds_for_completion(df, tokenizer=modelwrap.get_inference_tokenizer(), **kwargs)
 
         generation_outputs=modelwrap.generation_loop(ds,**kwargs)
         self._generation_outputs=generation_outputs
@@ -146,13 +161,12 @@ class ExtractionPipeline(BaseDirectory):
             except: pass
 
         return df
+    
 
-        
     def __call__(self, the_input, model_ref=None, **kwargs):
 
         if model_ref is not None:
             modelwrap=GenModelWrap.from_ref(model_ref)
-
         elif hasattr(self, 'modelwrap'): modelwrap=self.modelwrap
 
         if isinstance(the_input, str):
@@ -160,6 +174,10 @@ class ExtractionPipeline(BaseDirectory):
         
         elif isinstance(the_input, pd.DataFrame):
             return self.get_pred_df(the_input, modelwrap, **kwargs)
+        
+        elif isinstance(the_input, Dataset):
+            self.logger.info("Dataset input detected")
+
         
         return
 
