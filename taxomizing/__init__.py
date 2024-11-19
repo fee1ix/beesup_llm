@@ -163,7 +163,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
 
         member_tree=get_member_tree(tree)
         self.logger.info(f"member_tree.size: {member_tree.size}")
-        member_df=to_nodes_df(member_tree)
+        member_df=to_nodes_df(member_tree, iterator=PreOrderIter)
         #member_df['dist']=member_df['lambda_val'].apply(lambda x: 1/x if pd.notna(x) else x)
 
         self.chunks_df=chunks_df
