@@ -201,9 +201,11 @@ class GenModelWrap(BaseModelWrap):
 
         generation_config=GenerationConfig.from_dict(generation_config)
 
-        self.logger.info(f'generation_config: {generation_config}')
+        #self.logger.info(f'generation_config: {generation_config}')
 
         return generation_config
+
+
 
     def prepare_streaming(self):
         if not hasattr(self, 'streamer'):
@@ -212,15 +214,37 @@ class GenModelWrap(BaseModelWrap):
         if not hasattr(self, 'pipeline'):
             self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
 
+
+    def generation_step_pipeline(self, input_text_or_messages, **kwargs):
+
+        self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer)
+
+        generation_config=self.get_updated_config(kwargs, config_key='generation_config')
+        self._recent_generation_config=generation_config
+
+        pipeline_kwargs={
+            'text_inputs':input_text_or_messages,
+            'tokenizer':self.pipeline.tokenizer,
+            'generation_config':GenerationConfig.from_dict(generation_config),
+        }
+        result=self.pipeline(**pipeline_kwargs)
+
+        return result[0]['generated_text'][-1]['content']
+
+
     def generation_stream(self, input_text_or_messages, stop_event=None, **kwargs):
 
         self.prepare_inference()
         self.prepare_streaming()
 
+        generation_config=self.get_updated_config(kwargs, config_key='generation_config')
+        self._recent_generation_config=generation_config
+
+
         pipeline_kwargs={
             'text_inputs':input_text_or_messages,
             'tokenizer':self.pipeline.tokenizer,
-            'generation_config':self.get_generation_config(**kwargs),
+            'generation_config':GenerationConfig.from_dict(generation_config),
         }
         
         streamer_thread=Thread(target=self.pipeline, kwargs=pipeline_kwargs)
@@ -237,6 +261,11 @@ class GenModelWrap(BaseModelWrap):
             streamer_thread.join()
             torch.cuda.empty_cache()
             self.logger.info(f'generation_stream: executed torch.cuda.empty_cache()')
+        
+        del self.streamer
+        del self.pipeline
+        
+        return
 
     def get_data_collator(self, **kwargs):
 
@@ -285,7 +314,23 @@ class GenModelWrap(BaseModelWrap):
     def generation_step(self, inputs, **kwargs):
 
         generation_config=self.get_updated_config(kwargs, config_key='generation_config')
-        self.logger.info(f"generation_config: {generation_config}")
+        self._recent_generation_config=generation_config
+
+
+        #self.logger.info(f"generation_config: {generation_config}")
+
+        # stop_sequence=generation_config.get('stop_sequence',None)
+        # if stop_sequence is not None:
+        #     stop_sequence_ids = self.inference_tokenizer.encode(stop_sequence, add_special_tokens=False)
+        #     if len(stop_sequence_ids) > 1:
+        #         warnings.warn(
+        #             "Stopping on a multiple token sequence is not yet supported on transformers. The first token of"
+        #             " the stop sequence will be used as the stop sequence string in the interim."
+        #         )
+            
+        #     del generation_config['stop_sequence']
+        #     inputs['eos_token_id']=stop_sequence_ids[0]
+        
 
         inputs.to('cuda')
 
@@ -404,12 +449,11 @@ class GenModelWrap(BaseModelWrap):
                 print(new_token,end='',flush=True)
         else:
             tokenizer=self.get_inference_tokenizer()
-            inputs=tokenizer(messages,return_tensors='pt').to('cuda')
+            inputs=tokenizer.apply_chat_template(messages, return_dict=True,return_tensors='pt').to('cuda')
             outputs=self.generation_step(inputs, **kwargs)
             pred_completion=self.get_pred_completions(inputs, outputs)[0]
         
         return pred_completion
-
 
     def get_pred_df(self, df, **kwargs):
         from datasets import Dataset
@@ -426,13 +470,17 @@ class GenModelWrap(BaseModelWrap):
 
     def __call__(self, the_input, stream=False, as_chat=False, **kwargs):
 
+        self.prepare_inference()
+
         if isinstance(the_input, str):
 
             if as_chat:
                 chat_messages=[{'role':'user','content':the_input}]
-                return self.get_pred_chat(chat_messages, stream=stream, **kwargs)
+                #return self.get_pred_chat(chat_messages, stream=stream, **kwargs)
+                return self.generation_step_pipeline(input_text_or_messages=chat_messages, **kwargs)
             else:
                 return self.get_pred(the_input, stream=stream, as_chat=as_chat, **kwargs)
+
 
         elif isinstance(the_input, list):
             return self.get_pred_chat(the_input, stream=stream, **kwargs)
@@ -476,7 +524,7 @@ class GenModelWrap(BaseModelWrap):
         )
 
         return
-
+    
     def load_inference_tokenizer(self):
 
         self.inference_tokenizer=AutoTokenizer.from_pretrained(
