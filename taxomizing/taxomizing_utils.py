@@ -3,6 +3,8 @@ import numpy as np
 
 from ..toolkit.setup_utils import *
 
+
+
 def is_normalized_embs(embs):
     norm_embs = np.linalg.norm(embs, axis=1)
     return np.allclose(norm_embs, 1, atol=1e-6) # check if all embeddings are normalized
@@ -147,7 +149,7 @@ def add_parent_embs(nodes_df):
     return nodes_df
 
 
-from anytree import Node
+from anytree import Node, RenderTree, PreOrderIter
 
 def to_anytree(nodes_df):
     # Step 1: Create a dictionary to hold nodes (each 'child_id' and 'parent_id' is a node)
@@ -182,11 +184,16 @@ def to_anytree(nodes_df):
         if node.parent is None:  # Identify root nodes of disconnected components
             return node
 
-def to_nodes_df(tree):
+def to_nodes_df(tree, iterator=None):
+
+    if iterator is None:
+        nodes=[tree] + list(tree.descendants)
+    else:
+        nodes=iterator(tree)
 
     node_data=[]
 
-    for node in [tree] + list(tree.descendants):
+    for node in nodes:
 
         node_row=dict(id=node.name)
         node_row.update(filter_attributes(node,include_types=None))
@@ -202,7 +209,9 @@ def to_nodes_df(tree):
         node_data.append(node_row)
 
     nodes_df=pd.DataFrame(node_data)
-    nodes_df=nodes_df.sort_values(by=['size','id'], ascending=[True,True])
+
+    if iterator is None:
+        nodes_df=nodes_df.sort_values(by=['size','id'], ascending=[True,True])
     
     return nodes_df
 
@@ -219,11 +228,9 @@ def get_member_tree(tree):
 
     new_nodes={}
     for node in [tree] + list(tree.descendants):
-        #if not any([True if n.cid in [-1, np.nan] else False for n in node.descendants]) or node.cid in (): continue
-
         if not is_member(node): continue
-
         new_nodes[node.id] = Node(node.id)
+
 
         # Set the parent if it exists in the filtered nodes
         if node.parent and node.parent.id in new_nodes:

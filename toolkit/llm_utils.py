@@ -59,14 +59,14 @@ def prepare_sample_for_chat_completion(the_input, tokenizer):
 
     return tokenizer.apply_chat_template(prompt_messages,return_dict=True)
 
-def prepare_sample_for_chat_training(the_input, tokenizer):
+def prepare_sample_for_chat_finetuning(the_input, tokenizer):
     
     if hasattrs_or_keys(the_input, ['prompt_messages','gold_message']):
-        prompt_messages=the_input['prompt_messages']
-        gold_message=the_input['gold_message']
+        prompt_messages=getattr_or_key(the_input,'prompt_messages')
+        gold_message=getattr_or_key(the_input,'gold_message')
 
     
-    if gold_message['role']!='assistant': warnings.warn('The gold message should be an assistant message')
+    if gold_message[0]['role']!='assistant': warnings.warn('The gold message should be an assistant message')
     if prompt_messages[-1]['role']!='user': warnings.warn('The last prompt message should be a user message')
 
     all_messages=prompt_messages+gold_message

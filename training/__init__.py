@@ -85,6 +85,16 @@ class BaseTrainerWrap(BaseDirectory):
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
 
+    def get_model(self):
+        return getattr(self,'model',self.modelwrap.get_model())
+
+    def get_tokenizer(self):
+
+        if hasattr(self,'modelwrap'): 
+            return self.modelwrap.get_training_tokenizer()
+
+
+     
     def run(self, trainer, **kwargs):
 
         #trainer = kwargs.get('trainer', self.get_trainer(**kwargs))
@@ -171,8 +181,8 @@ class BaseTrainerWrap(BaseDirectory):
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=len(all_labels))
 
 
+from peft import PeftModel, LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 class LoraTrainerWrap(BaseTrainerWrap):
     type = 'lora_trainer'
 
@@ -199,27 +209,12 @@ class LoraTrainerWrap(BaseTrainerWrap):
 
         self.update_attributes(self._default_config, overwrite=False)
 
-    def load_model(self, model, **kwargs):
-        if model is None:
-            if hasattr(self, 'model'):
-                self.logger.info("Model already attached")
-            elif hasattr(self, 'modelwrap'):
-                self.model=self.modelwrap.get_model()
-        else:
-            self.model=model
-        
+    def prepare_model_for_lora(self, model, **kwargs):
 
-
-    def prepare_model(self,model=None, **kwargs):
-
-        # if self._model_is_prepared:
-        #     self.logger.info("Model is already prepared")
-        #     return
-        
-        self.load_model(model=model)
+        if isinstance(model, PeftModel):
+            self.logger.info('Model already prepared for lora')
+            return model
     
-        model=self.model
-
         #model=model.unload()
         self.logger.info('Preparing lora model')
         
@@ -249,27 +244,27 @@ class LoraTrainerWrap(BaseTrainerWrap):
             'lora_scale':lora_scale,
         }
 
-        self.model=model
-        self._model_is_prepared=True
-        return 
+ 
+        return model
     
+    def get_trainer(self, **kwargs):
 
-    def prepare_trainer(self, **kwargs):
+        # model = kwargs.get('model', self.get_model())
 
-        self.prepare_model(**kwargs)
+        lora_model = self.prepare_model_for_lora(**kwargs)
+        lora_model.config.use_cache = False
 
-        tokenizer = kwargs.get('tokenizer', getattr(self, 'tokenizer', None))
-        model = kwargs.get('model', getattr(self, 'model', None))
+        tokenizer = kwargs.get('tokenizer', self.get_tokenizer())
         
         lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
         args=TrainingArguments(**self.get_updated_config(kwargs, config_key='args'))
 
         data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
-        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**data_collator_config)
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=lora_model,**data_collator_config)
         sftt_args=self.get_updated_config(kwargs, config_key='sftt_args')
 
         trainer = SFTTrainer(
-            model=model,
+            model=lora_model,
             train_dataset=kwargs.get('train_dataset', getattr(self, 'train_dataset', None)),
             eval_dataset=kwargs.get('eval_dataset', getattr(self, 'eval_dataset', None)),
             peft_config=lora_config,
@@ -278,38 +273,7 @@ class LoraTrainerWrap(BaseTrainerWrap):
             **sftt_args
         )
 
-        self.trainer=trainer
-        return
-
-
-    def prepare(self, **kwargs):
-
-        self.prepare_model(**kwargs)
-
-        tokenizer = kwargs.get('tokenizer', getattr(self, 'tokenizer', None))
-        model = kwargs.get('model', getattr(self, 'model', None))
-        
-        self.prepare_model(model=model)
-
-        lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
-        args=TrainingArguments(**self.get_updated_config(kwargs, config_key='args'))
-
-        data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
-        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**data_collator_config)
-        sftt_args=self.get_updated_config(kwargs, config_key='sftt_args')
-
-        trainer = SFTTrainer(
-            model=self.model,
-            train_dataset=kwargs.get('train_dataset', getattr(self, 'train_dataset', None)),
-            eval_dataset=kwargs.get('eval_dataset', getattr(self, 'eval_dataset', None)),
-            peft_config=lora_config,
-            args=args,  
-            data_collator=data_collator,
-            **sftt_args
-        )
-
-        self.trainer=trainer
-        return
+        return trainer
 
 
     def run(self, **kwargs):
@@ -322,33 +286,33 @@ class LoraTrainerWrap(BaseTrainerWrap):
         
 
 
-    def get_trainer(self, **kwargs):
+    # def get_trainer(self, **kwargs):
 
-        model=kwargs.get('model', None)
-        if model is None:
-            model = self._modelwrap.get_model()
-            model = self.get_lora_model(model)
+    #     model=kwargs.get('model', None)
+    #     if model is None:
+    #         model = self._modelwrap.get_model()
+    #         model = self.get_lora_model(model)
 
 
-        tokenizer = self._modelwrap.get_training_tokenizer()
+    #     tokenizer = self._modelwrap.get_training_tokenizer()
 
-        train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
+    #     train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
 
         
 
-        trainer = SFTTrainer(
-            model=model,
-            train_dataset=train_ds,
-            eval_dataset=eval_ds,
-            peft_config=LoraConfig(**self.lora_config),
-            args=TrainingArguments(**self.args),  
-            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**self.data_collator_config),
-            **self.sftt_args
-        )
+    #     trainer = SFTTrainer(
+    #         model=model,
+    #         train_dataset=train_ds,
+    #         eval_dataset=eval_ds,
+    #         peft_config=LoraConfig(**self.lora_config),
+    #         args=TrainingArguments(**self.args),  
+    #         data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**self.data_collator_config),
+    #         **self.sftt_args
+    #     )
 
-        trainer.evaluation_loop=types.MethodType(self.custom_evaluation_loop,trainer)
+    #     trainer.evaluation_loop=types.MethodType(self.custom_evaluation_loop,trainer)
 
-        return trainer
+    #     return trainer
     
 
 
