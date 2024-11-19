@@ -49,8 +49,9 @@ class BaseDataset(BaseDirectory):
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
     
-    def get_df_split(self, split='train'):
-        return self.dataset_df[self.dataset_df.split==split].copy()
+    def get_df_splits(self, splits='train'):
+        if isinstance(splits, str): splits=[splits]
+        return self.dataset_df[self.dataset_df.split.isin(splits)].copy()
 
 
     def spawn(self):
