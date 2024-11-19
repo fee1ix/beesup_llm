@@ -101,7 +101,7 @@ class BaseDirectory(object):
 
     def get_updated_config(self, kwargs, config_key='some_config'):
 
-        base_config=getattr(self,config_key)
+        base_config=copy.deepcopy(getattr(self,config_key))
 
         if config_key in kwargs: kwargs.update(kwargs.get(config_key))
 
