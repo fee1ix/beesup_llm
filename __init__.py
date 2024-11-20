@@ -76,13 +76,13 @@ class BaseDirectory(object):
     """
     Base class for all directories in the lab.
     """
-
     type = 'directory'
-    _config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
-    _config_keys_to_exclude=['logger','from_ref']
     logger = logging.getLogger(__name__)
 
     def __init__(self, ref=None, **kwargs):
+
+        self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+        self._config_keys_to_exclude=['logger','from_ref']
 
         kwargs.update(self.get_config())
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
@@ -103,11 +103,17 @@ class BaseDirectory(object):
 
         base_config=copy.deepcopy(getattr(self,config_key))
 
+        self.logger.debug(f"base_config: {base_config}")
+
         if config_key in kwargs: kwargs.update(kwargs.get(config_key))
+
+        self.logger.debug(f"kwargs: {kwargs}")
 
         kwargs={k:v for k,v in kwargs.items() if k in base_config.keys()}
 
         base_config.update(kwargs)
+
+        self.logger.debug(f"updated_config: {base_config}")
         return base_config
 
     def spawn_config(self):
