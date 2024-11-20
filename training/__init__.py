@@ -41,11 +41,11 @@ class BaseTrainerWrap(BaseDirectory):
         super().__init__(ref,  model_ref=None, dataset_ref=None, **kwargs)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['modelwrap','model','dataset','trainer','model_config'])
+        self._config_keys_to_exclude.extend(['modelwrap','model','dataset','trainer','model_config','model_ref','dataset_ref'])
         self._model_is_prepared=False
 
         self._default_config=dict(
-            args=dict(
+            trainer_args=dict(
                 seed=42,
                 auto_find_batch_size=True,
                 gradient_accumulation_steps=1,
@@ -62,15 +62,11 @@ class BaseTrainerWrap(BaseDirectory):
                 logging_strategy='steps',
                 logging_steps=1,
                 logging_first_step=True,
+                do_train=True,
                 do_eval=True,
                 eval_strategy='epoch',
                 prediction_loss_only=False,
             ),
-            sftt_args=dict(
-                max_seq_length=4096,
-                packing=False
-            ),
-            
             data_collator_config=dict(
                 padding='longest',
                 label_pad_token_id =-100,
@@ -204,6 +200,10 @@ class LoraTrainerWrap(BaseTrainerWrap):
                 bias='none',
                 task_type='CAUSAL_L',
             ),
+            sft_trainer_args=dict(
+                max_seq_length=4096,
+                packing=False
+            ),
         )
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
 
@@ -249,28 +249,27 @@ class LoraTrainerWrap(BaseTrainerWrap):
     
     def get_trainer(self, **kwargs):
 
-        # model = kwargs.get('model', self.get_model())
-
         lora_model = self.prepare_model_for_lora(**kwargs)
         lora_model.config.use_cache = False
 
         tokenizer = kwargs.get('tokenizer', self.get_tokenizer())
         
         lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
-        args=TrainingArguments(**self.get_updated_config(kwargs, config_key='args'))
+
+        trainer_args=TrainingArguments(**self.get_updated_config(kwargs, config_key='trainer_args'))
 
         data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
         data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=lora_model,**data_collator_config)
-        sftt_args=self.get_updated_config(kwargs, config_key='sftt_args')
+        sft_trainer_args=self.get_updated_config(kwargs, config_key='sft_trainer_args')
 
         trainer = SFTTrainer(
             model=lora_model,
             train_dataset=kwargs.get('train_dataset', getattr(self, 'train_dataset', None)),
             eval_dataset=kwargs.get('eval_dataset', getattr(self, 'eval_dataset', None)),
             peft_config=lora_config,
-            args=args,  
+            args=trainer_args,  
             data_collator=data_collator,
-            **sftt_args
+            **sft_trainer_args
         )
 
         return trainer
