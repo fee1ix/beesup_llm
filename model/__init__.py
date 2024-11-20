@@ -58,8 +58,6 @@ class BaseModelWrap(BaseDirectory):
         self._config_key_order.extend(['name_or_path'])
         self._config_keys_to_exclude.extend(['model'])#
 
-        
-
         self._default_config=dict()
         self.update_attributes(self._default_config, overwrite=False)
     
@@ -82,6 +80,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 class GenModelWrap(BaseModelWrap):
 
     type='gen_model'
+    
   
     @staticmethod
     def matches(ref):
@@ -205,15 +204,12 @@ class GenModelWrap(BaseModelWrap):
 
         return generation_config
 
-
-
     def prepare_streaming(self):
         if not hasattr(self, 'streamer'):
             self.streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
 
         if not hasattr(self, 'pipeline'):
             self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, streamer=self.streamer)
-
 
     def generation_step_pipeline(self, input_text_or_messages, **kwargs):
 
@@ -230,7 +226,6 @@ class GenModelWrap(BaseModelWrap):
         result=self.pipeline(**pipeline_kwargs)
 
         return result[0]['generated_text'][-1]['content']
-
 
     def generation_stream(self, input_text_or_messages, stop_event=None, **kwargs):
 
@@ -293,14 +288,6 @@ class GenModelWrap(BaseModelWrap):
         data_collator=kwargs.get('data_collator', self.get_data_collator(**kwargs))
         
         from torch.utils.data import DataLoader
-
-        # dataloader_config=self.dataloader_config
-        # if kwargs.get('dataloader_config'): 
-        #     dataloader_config.update(**kwargs.get('dataloader_config'))
-        # else:
-        #     kwargs=filter_kwargs(kwargs, ref=dataloader_config)
-        #     dataloader_config.update(**kwargs)
-
         dataloader_config=self.get_updated_config(kwargs, config_key='dataloader_config')
 
         dataloader=DataLoader(
@@ -513,7 +500,7 @@ class GenModelWrap(BaseModelWrap):
 
 
     def load_model(self):
-
+        self.logger.info(f"Loading model {self.name_or_path}")
         self.model=AutoModelForCausalLM.from_pretrained(
             self.name_or_path,
             device_map="auto",
