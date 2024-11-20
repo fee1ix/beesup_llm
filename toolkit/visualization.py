@@ -147,8 +147,8 @@ def plot_emb_clustering_scatter_3d(clustering_df, n_samples=None, random_state=2
         plot_df=assign_pca_coords(plot_df, n_components=3)
 
     if not 'color' in plot_df.columns:
-        plot_df['color']=assign_colors_list(plot_df['cluster_id'].values)
-
+        plot_df['color']=assign_colors_list(plot_df['cid'].values)
+    
 
     fig = go.Figure()
     fig.add_trace(
