@@ -42,7 +42,6 @@ class TaxomizingPipeline(BaseDirectory):
                 #self.dataset_config=dataset.get_config()
                 #self.df=dataset.dataset_df
 
-
         if emb_model_ref is not None:
             self.emb_model=EmbModelWrap.from_ref(emb_model_ref)
         
@@ -52,10 +51,6 @@ class TaxomizingPipeline(BaseDirectory):
     def get_linkage_matrix(self, df=None):
         
         if df is None: df = self.df
-
-        # if os.path.exists(f'{self.path}/linkage_matrix.pkl'):
-        #     with open(f'{self.path}/linkage_matrix.pkl', 'rb') as f:
-        #         self.linkage_matrix = pickle.load(f)
         
         linkage_matrix = linkage(np.vstack(df['emb'].values), **self.linkage_args)
         self.logger.info(f"shape {linkage_matrix.shape}")
@@ -86,6 +81,39 @@ class TaxomizingPipeline(BaseDirectory):
         self.nodes_df=nodes_df
 
         return nodes_df
+
+
+class ScipyTaxomizingPipeline(TaxomizingPipeline):
+    def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
+        super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
+
+
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend([])
+
+        self._default_config=dict(
+            cluster_config=dict(
+                min_cluster_size=60, #5
+                max_cluster_size=0, #0
+                min_samples=None, #None
+                p=2, #2
+                alpha=1.0, #1.0
+                leaf_size=40, #40
+                cluster_selection_epsilon=0.1, #0.0
+                cluster_selection_method="eom", #eom, leaf
+                allow_single_cluster=False, #False
+                metric='precomputed',
+                approx_min_span_tree=True, #True
+                gen_min_span_tree=False, #False
+                cluster_selection_epsilon_max=float('inf'), #float('inf')
+            )
+        )
+        self.update_attributes(self._default_config, overwrite=False)
+
+
+
+
+
 
 class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
@@ -141,7 +169,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
 
         self.clusterer.fit(data)
 
-        self.logger.info(f"number of clusters: {len(set(self.clusterer.labels_))}")
+        self.logger.info(f"number of clusters: {len(set(self.clusterer.labels_))-1}")
         self.logger.info(f"number of clustered: {np.sum(self.clusterer.labels_!=-1)}")
         self.logger.info(f"number of unclustered: {np.sum(self.clusterer.labels_==-1)}")
 
