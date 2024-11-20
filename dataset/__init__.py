@@ -58,31 +58,14 @@ class BaseDataset(BaseDirectory):
         assert hasattr(self, 'dataset_df'), "Dataset must be assigned before spawning"
         assert isinstance(self.dataset_df, pd.DataFrame), "Dataset must be a pandas DataFrame."
 
-        if not os.path.exists(f'{self.path}'):
-            os.makedirs(f'{self.path}', exist_ok=False)
+        self.spawn_config()
 
-        required_cols=[]
-        #required_cols=['prompt','gold_completion','prompt_messages','gold_message']
-
-        for required_col in required_cols:
-            if required_col not in self.dataset_df.columns:
-                self.dataset_df[required_col]=None
-        
         self.dataset_df.reset_index(drop=True, inplace=True)
         self.dataset_df.to_pickle(f"{self.path}/dataset_df.pkl")
-        set_config(self.get_config())
 
         logging.info(f"{self.name.upper()} spawned at {self.path}")
   
-    #def get_df(self):
-
-
-
-
-
-
-
-
+ 
     def arrange_sample(self, sample, tokenizer):
 
         if isinstance(sample.get('prompt_messages'),list) and isinstance(sample.get('gold_message'),list):
