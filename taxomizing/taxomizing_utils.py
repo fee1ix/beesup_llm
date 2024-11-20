@@ -61,6 +61,33 @@ def assign_data_tree(node, df):
         node.chunk = None
         return node.emb
 
+def propagate_emb(tree):
+
+    def _recursive(node):
+
+        if not node.children:  # Base case: if it's a leaf node, return its embedding
+            return getattr(node,'emb') if hasattr(node, 'emb') else None
+
+        # Collect embeddings from all descendants
+        embs = []
+        for child in node.children:
+            child_emb = _recursive(child)
+            if child_emb is not None:
+                embs.append(child_emb)
+        
+        # Calculate the mean embedding if there are any valid embeddings
+        mean_emb=None
+        if embs:
+            mean_emb = np.mean(embs, axis=0)
+            mean_emb = mean_emb / np.linalg.norm(mean_emb)  # Normalize the mean embedding
+            setattr(node,'emb',mean_emb)
+
+        return mean_emb
+    
+    _recursive(tree)
+
+    return tree
+
 
 def propagate_mean(tree, key, return_df=False):
 
@@ -128,6 +155,7 @@ def add_parent_cids(nodes_df):
         nodes_df.loc[row.name,'cid']=cid
     
     return nodes_df
+
 
 def add_parent_embs(nodes_df):
     while nodes_df['emb'].isna().any():  # Continue until no NaNs remain in 'emb'
@@ -202,7 +230,7 @@ def to_nodes_df(tree, iterator=None):
             is_leaf=node.is_leaf,
             is_root=node.is_root,
             size=node.size,
-            height=node.height,
+            #height=node.height,
             depth=node.depth,
         ))
 
@@ -241,6 +269,11 @@ def get_member_tree(tree):
             if k in ['is_leaf','is_root','size','depth','height']: continue
             if k.startswith('_'): continue
             new_nodes[node.id].__setattr__(k,v)
+    
+    for node in new_nodes.values():
+        decendant_cids=set([int(d.cid) for d in node.descendants if d.cid>=0])
+        new_nodes[node.id].__setattr__('decendant_cids',decendant_cids)
+        new_nodes[node.id].__setattr__('label',f"Cluster with {node.size} members")
 
 
     # Step 4: Identify disconnected components and handle them as independent trees or under a new root
