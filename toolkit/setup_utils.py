@@ -38,9 +38,14 @@ def get_max_id(path):
     if id_list: max_id = max(id_list)
     return max_id
 
+def save_yaml(the_yaml, path):
+
+    with open(path, 'w') as file:
+        yaml.dump(the_yaml, file, sort_keys=False, default_flow_style=False)
+
+
 def set_config(config):
-    with open(f'{config["path"]}/config.yaml', 'w') as file:
-        yaml.dump(config, file, sort_keys=False, default_flow_style=False)
+    save_yaml(config, f'{config["path"]}/config.yaml')
 
 def extract_lab_path(path):
 
