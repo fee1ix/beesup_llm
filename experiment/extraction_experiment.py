@@ -8,23 +8,60 @@ from beesup_llm.training import *
 from beesup_llm.extraction.extraction_pipeline import *
 
 
+from transformers import TrainerCallback
+class EvalCallback(TrainerCallback):
+    def __init__(self, experiment):
+        self.experiment = experiment
+        pass
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        self.experiment.logger.info('run EvalCallback')
+
+        model=kwargs['model']
+        model.eval()
+
+        eval_df=self.experiment.eval_df
+        pred_df=self.experiment.pipeline(eval_df, model_ref=model)
+
+        pred_df.to_pickle(f"{self.experiment.path}/{str(state.global_step).zfill(4)}_eval_df.pkl")
+        self.experiment.logger.info(f"Saved eval_df to {self.experiment.path}/{str(state.global_step).zfill(4)}_eval_df.pkl")
+
 
 class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
 
+    @classmethod
+    def get_pending(cls):
+
+        parent_lab_path = extract_lab_path(os.getcwd())
+        parent_dir_path = f'{parent_lab_path}/{cls.type}s'
+        ids=get_ids(parent_dir_path)
+
+        pending_list=[]
+        for id in ids:
+            config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml")
+            if not config_dict['done']: 
+                pending_list.append(config_dict)
+        
+        return pending_list
+
+
     def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
-        super().__init__(ref)
+        super().__init__(ref, **kwargs)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','modelwrap','pipeline','dataset'])
+        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','modelwrap','pipeline','dataset'])
 
         self._default_config=dict(
             done = False,
-            batch_size = 4,
-
             evaluate_base_model=True,
+
             generation_config=dict(
                 do_sample=False,
+            ),
+
+            dataloader_config=dict(
+                batch_size=8,
             ),
 
             trainer_args=dict(
@@ -36,6 +73,8 @@ class ExtractionExperiment(BaseDirectory):
                 logging_strategy='steps',
                 logging_steps=1,
                 logging_first_step=True,
+                
+                eval_strategy='no',
                 do_eval=False,
             ),
 
@@ -43,17 +82,49 @@ class ExtractionExperiment(BaseDirectory):
 
         self.update_attributes(self._default_config, overwrite=False)
 
+
+
+        model_ref = model_ref or getattr(self, 'model_config', None)
         if model_ref is not None:
             self.modelwrap=GenModelWrap.from_ref(model_ref)
+            if not self.modelwrap.is_spawned(): self.modelwrap.spawn()
+            self.model_config=self.get_updated_sub_config(self.modelwrap.get_config())
 
+        dataset_ref = dataset_ref or getattr(self, 'dataset_config', None)
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
+            if not self.dataset.is_spawned(): self.dataset.spawn()
+            self.dataset_config=self.get_updated_sub_config(self.dataset.get_config())
 
+        trainer_ref = trainer_ref or getattr(self, 'trainer_config', None)
         if trainer_ref is not None:
             self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
+            if not self.trainwrap.is_spawned(): self.trainwrap.spawn()
+            self.trainer_config=self.get_updated_sub_config(self.trainwrap.get_config())
 
+        pipeline_ref = pipeline_ref or getattr(self, 'pipeline_config', None)
         if pipeline_ref is not None:
             self.pipeline=ExtractionPipeline.from_ref(pipeline_ref)
+            if not self.pipeline.is_spawned(): self.pipeline.spawn()
+            self.pipeline_config=self.get_updated_sub_config(self.pipeline.get_config())
+
+    def get_updated_sub_config(self, sub_config):
+
+            ignore_keys=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path','timestamp_init']
+
+            self_config=self.get_config()
+            self_config={k:v for k,v in self_config.items() if k not in ignore_keys}
+
+            sub_keys=sub_config.keys()
+            self_config={k:v for k,v in self_config.items() if k  in sub_keys}
+
+            for key in sub_keys:
+                if key in ignore_keys: continue
+                if hasattr(self, key): self.__delattr__(key)
+
+            updated_sub_config=update_nested_dict(sub_config,self_config, overwrite=True)
+
+            return updated_sub_config
 
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")
@@ -80,41 +151,39 @@ class ExtractionExperiment(BaseDirectory):
         self.train_ds=train_ds
         self.eval_ds=eval_ds
 
-    def load_trainer(self,**kwargs):
+    def get_trainer(self,**kwargs):
         self.logger.info(f"Loading Trainer")
         
         self.load_data(**kwargs)
 
-        trainer_args=self.get_updated_config(kwargs, 'trainer_args')
+        #trainer_args=self.get_updated_config(kwargs, 'trainer_args')
+        #self.logger.info(f"Trainer Args: {trainer_args}")
+
         model=self.modelwrap.get_model()
 
         trainer= self.trainwrap.get_trainer(
             model=model,
             tokenizer=self.modelwrap.get_training_tokenizer(),
             train_dataset=self.train_ds,
-            args=trainer_args,
+            #args=trainer_args,
         )
-        self.trainer=trainer
 
-    def get_trainer(self, **kwargs):
+        trainer.add_callback(EvalCallback(self))
 
-        trainer=getattr(self, 'trainer', None)
-        if trainer is None:
-            self.load_trainer()
-            trainer=self.trainer
-            del self.trainer
-            return trainer
-        
-        else:
-            return self.trainer
-
-
-
+        return trainer
 
     def run(self,**kwargs):
+        self.logger.info(f"RUNNING")
+        self.timestam_run=get_datetime()
 
-        self.trainwrap.run(**kwargs)
+        trainer=self.get_trainer(**kwargs)
+        trainer_args=trainer.args.to_dict()
+        save_yaml(trainer_args, f"{self.path}/trainer_args.yaml")
+        trainer.train()
 
+        self.done=True
+        self.timestam_done=get_datetime()
+        set_config(self.get_config())
 
 
 
