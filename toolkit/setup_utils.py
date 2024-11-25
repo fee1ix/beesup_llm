@@ -43,7 +43,6 @@ def save_yaml(the_yaml, path):
     with open(path, 'w') as file:
         yaml.dump(the_yaml, file, sort_keys=False, default_flow_style=False)
 
-
 def set_config(config):
     save_yaml(config, f'{config["path"]}/config.yaml')
 
@@ -188,6 +187,26 @@ def filter_kwargs(the_kwargs, allowed_keys=[], ref=None, exclude_prefixes=['_'])
 
 def get_cls_attrs(cls):
     return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value) and not isinstance(value, classmethod)}
+
+def get_value_from_keypath(the_dict, keypath):
+
+    if isinstance(keypath,str):
+        keypath_list=re.split(r'[\./]',keypath)
+
+    elif isinstance(keypath,list):
+        keypath_list=keypath
+
+    def _recursive(the_dict, keypath_list):
+        key = keypath_list[0]
+        if key in the_dict:
+            if len(keypath_list)>1:
+                return _recursive(the_dict[key], keypath_list[1:])
+            else:
+                return the_dict[key]
+        else:
+            return None
+        
+    return _recursive(the_dict, keypath_list)
 
 import pytz
 import datetime
