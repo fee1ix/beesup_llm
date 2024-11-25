@@ -1,6 +1,6 @@
 from beesup_llm import *
-from ..toolkit.setup_utils import *
-from ..toolkit.llm_utils import *
+from beesup_llm.toolkit.setup_utils import *
+from beesup_llm.toolkit.llm_utils import *
 
 from beesup_llm.model import *
 from beesup_llm.dataset import BaseDataset
@@ -9,23 +9,27 @@ from beesup_llm.extraction.extraction_pipeline import *
 
 
 from transformers import TrainerCallback
-class EvalCallback(TrainerCallback):
+class EvaluationCallback(TrainerCallback):
     def __init__(self, experiment):
         self.experiment = experiment
         pass
 
+    def get_eval_df(self, model):
+        model.eval()
+        eval_df=self.experiment.eval_df
+        eval_df=self.experiment.pipeline(eval_df, model_ref=model)
+        return eval_df
+    
+    def save_eval_df(self, eval_df, global_step):
+        eval_df.to_pickle(f"{self.experiment.path}/{str(global_step).zfill(4)}_eval_df.pkl")
+        self.experiment.logger.info(f"Saved eval_df to {self.experiment.path}/{str(global_step).zfill(4)}_eval_df.pkl")
+
     def on_epoch_end(self, args, state, control, **kwargs):
-        self.experiment.logger.info('run EvalCallback')
 
         model=kwargs['model']
-        model.eval()
-
-        eval_df=self.experiment.eval_df
-        pred_df=self.experiment.pipeline(eval_df, model_ref=model)
-
-        pred_df.to_pickle(f"{self.experiment.path}/{str(state.global_step).zfill(4)}_eval_df.pkl")
-        self.experiment.logger.info(f"Saved eval_df to {self.experiment.path}/{str(state.global_step).zfill(4)}_eval_df.pkl")
-
+        eval_df=self.get_eval_df(model)
+        self.save_eval_df(eval_df,state.global_step)
+        
 
 class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
@@ -44,6 +48,7 @@ class ExtractionExperiment(BaseDirectory):
                 pending_list.append(config_dict)
         
         return pending_list
+    
 
 
     def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
@@ -54,7 +59,7 @@ class ExtractionExperiment(BaseDirectory):
 
         self._default_config=dict(
             done = False,
-            evaluate_base_model=True,
+            do_eval_base_model=True,
 
             generation_config=dict(
                 do_sample=False,
@@ -156,11 +161,12 @@ class ExtractionExperiment(BaseDirectory):
         
         self.load_data(**kwargs)
 
+        model=kwargs.get('model')
+
         #trainer_args=self.get_updated_config(kwargs, 'trainer_args')
         #self.logger.info(f"Trainer Args: {trainer_args}")
 
-        model=self.modelwrap.get_model()
-
+    
         trainer= self.trainwrap.get_trainer(
             model=model,
             tokenizer=self.modelwrap.get_training_tokenizer(),
@@ -168,17 +174,30 @@ class ExtractionExperiment(BaseDirectory):
             #args=trainer_args,
         )
 
-        trainer.add_callback(EvalCallback(self))
+        trainer.add_callback(EvaluationCallback(self))
 
         return trainer
+    
+    def evaluate_base_model(self,model):
+
+        eval_callback=EvaluationCallback(self)
+        
+        eval_df=eval_callback.get_eval_df(model)
+        eval_callback.save_eval_df(eval_df,0)
+
 
     def run(self,**kwargs):
         self.logger.info(f"RUNNING")
         self.timestam_run=get_datetime()
+        base_model=self.modelwrap.get_model()
 
-        trainer=self.get_trainer(**kwargs)
+        if self.do_eval_base_model:
+            self.evaluate_base_model(model=base_model)
+
+        trainer=self.get_trainer(model=base_model,**kwargs)
         trainer_args=trainer.args.to_dict()
         save_yaml(trainer_args, f"{self.path}/trainer_args.yaml")
+        
         trainer.train()
 
         self.done=True
@@ -186,4 +205,35 @@ class ExtractionExperiment(BaseDirectory):
         set_config(self.get_config())
 
 
+    def get_evals_df(self):
 
+        fns=os.listdir(self.path)
+        fns=[fn for fn in fns if fn.endswith('eval_df.pkl')]
+        evals_df=pd.DataFrame()
+        for fn in fns:
+            global_step=int(fn[:4])
+            eval_df=pd.read_pickle(f"{self.path}/{fn}")
+            eval_df['global_step']=global_step
+            evals_df=pd.concat([evals_df,eval_df])
+
+        evals_df.reset_index(drop=True, inplace=True)
+        return evals_df
+
+
+
+
+if __name__ == '__main__':
+    import sys
+
+    if len(sys.argv) != 2:
+        print("Usage: python experiment_module.py <config_path>")
+        sys.exit(1)
+    
+    config_path=sys.argv[1]
+    print(f"Starting experiment from config: {config_path}")
+    os.chdir(config_path)
+    # Initialize and run the experiment
+    experiment = ExtractionExperiment(config_path)
+    experiment.run()
+
+    
