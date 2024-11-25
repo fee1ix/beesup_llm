@@ -104,6 +104,12 @@ class ExtractionPipeline(BaseDirectory):
 
         return prompting_config
 
+    @staticmethod
+    def get_pred_parse_only(pred_completion, **kwargs):
+        sample=ExtractionSample(pred_completion=pred_completion)
+        sample.parse_df()
+        return sample.pred_df
+
     def get_pred(self, report_passage, modelwrap, **kwargs):
 
         prompt_messages=get_prompt_messages(report_passage, **self.get_prompting_config(**kwargs))
@@ -112,10 +118,8 @@ class ExtractionPipeline(BaseDirectory):
         for new_token in modelwrap.generation_stream(prompt_messages):
             pred_completion+=new_token
             print(new_token, end='', flush=True)
-
-        sample=ExtractionSample(pred_completion=pred_completion)
-
-        return sample.pred_json
+        
+        return self.get_pred_parse_only(pred_completion,**kwargs)
 
 
     def prepare_df_for_completion(self, df, **kwargs):
@@ -140,6 +144,21 @@ class ExtractionPipeline(BaseDirectory):
         ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, tokenizer),axis=1).to_list())
         return ds
 
+    @staticmethod
+    def get_pred_df_parse_only(df,*kwargs):
+        assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
+        
+        #df[['pred_json','pred_is_valid','pred_is_empty']]=None,
+        for i,row in df.iterrows():
+            try:
+                sample=ExtractionSample(pred_completion=row['pred_completion'])
+                df.at[i,'pred_json']=sample.pred_json
+                df.at[i,'pred_is_valid']=sample.pred_is_valid
+                df.at[i,'pred_is_empty']=sample.pred_is_empty
+
+            except: pass
+        
+        return df
 
     def get_pred_df(self, df, modelwrap, **kwargs):
 
@@ -153,16 +172,9 @@ class ExtractionPipeline(BaseDirectory):
 
         df['pred_completion']=generation_df['pred_completion'].values
 
-        df['pred_json']=None
-        for i,row in df.iterrows():
-            try:
-                sample=ExtractionSample(pred_completion=row['pred_completion'])
-                df.at[i,'pred_json']=sample.pred_json
-            except: pass
+        return self.get_pred_df_parse_only(df)
 
-        return df
     
-
     def __call__(self, the_input, model_ref=None, **kwargs):
 
         if model_ref is not None:
