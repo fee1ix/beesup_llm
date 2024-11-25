@@ -13,9 +13,12 @@ from .toolkit.setup_utils import *
 import logging
 from typing import Optional
 
+import pandas as pd
+
 import pytz
 import datetime
 TIMEZONE = pytz.timezone('Europe/Berlin')
+
 
 class Lab(object):
 
@@ -78,6 +81,39 @@ class BaseDirectory(object):
     """
     type = 'directory'
     logger = logging.getLogger(__name__)
+
+
+    @classmethod
+    def get_overview(cls, keypaths=[]):
+
+        _keypaths=['path','id','name']+keypaths
+
+        parent_lab_path = extract_lab_path(os.getcwd())
+        parent_dir_path = f'{parent_lab_path}/{cls.type}s'
+
+        if not os.path.exists(parent_dir_path): raise FileNotFoundError(f"{parent_dir_path} does not exist")
+
+        overview_data=[]
+        ids=get_ids(parent_dir_path)
+        for id in ids:
+            overview_row=dict()
+
+            config_path=f"{parent_dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml"
+            if not os.path.exists(config_path):
+                cls.logger.warning(f"{config_path} does not exist")
+                continue
+
+            config_dict = load_dict(config_path)
+
+            for keypath in _keypaths:
+                value=get_value_from_keypath(config_dict, keypath)
+
+                if value is not None: overview_row[keypath]=value
+            
+            overview_data.append(overview_row)
+        
+        return pd.DataFrame(overview_data)
+
 
     def __init__(self, ref=None, **kwargs):
 
