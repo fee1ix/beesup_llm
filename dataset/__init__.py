@@ -31,7 +31,7 @@ class BaseDataset(BaseDirectory):
     def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['dataset_df','emb_model'])
+        self._config_keys_to_exclude.extend(['df','dataset_df','emb_model'])
 
         if os.path.exists(f'{self.path}/dataset_df.pkl'):
             self.dataset_df=pd.read_pickle(f'{self.path}/dataset_df.pkl')
@@ -48,11 +48,12 @@ class BaseDataset(BaseDirectory):
             parent_config=BaseDataset(parent_ref).get_config()
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
+        
+        self.df=self.dataset_df
     
     def get_df_splits(self, splits='train'):
         if isinstance(splits, str): splits=[splits]
         return self.dataset_df[self.dataset_df.split.isin(splits)].copy()
-
 
     def spawn(self):
         assert hasattr(self, 'dataset_df'), "Dataset must be assigned before spawning"
@@ -65,7 +66,6 @@ class BaseDataset(BaseDirectory):
 
         logging.info(f"{self.name.upper()} spawned at {self.path}")
   
- 
     def arrange_sample(self, sample, tokenizer):
 
         if isinstance(sample.get('prompt_messages'),list) and isinstance(sample.get('gold_message'),list):
