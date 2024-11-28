@@ -31,7 +31,7 @@ class BaseTest(BaseDirectory):
             ),
         )
 
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
         if hasattr(self, 'dataset_config'):
             dataset_ref = self.dataset_config
