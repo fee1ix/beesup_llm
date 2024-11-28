@@ -49,7 +49,7 @@ class BaseDataset(BaseDirectory):
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
         
-        self.df=self.dataset_df
+        
     
     def get_df_splits(self, splits='train'):
         if isinstance(splits, str): splits=[splits]
