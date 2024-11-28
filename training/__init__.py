@@ -46,7 +46,6 @@ class BaseTrainerWrap(BaseDirectory):
 
         self._default_config=dict(
             trainer_args=dict(
-                seed=42,
                 auto_find_batch_size=True,
                 gradient_accumulation_steps=1,
                 gradient_checkpointing_kwargs=dict(
@@ -73,7 +72,7 @@ class BaseTrainerWrap(BaseDirectory):
             )
         )
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
         if model_ref is not None:
             self.modelwrap=GenModelWrap.from_ref(model_ref)
@@ -102,7 +101,7 @@ class BaseTrainerWrap(BaseDirectory):
         self.logger.info(f"Completed")
 
         self.done=True
-        self.datetime_end=self.get_datetime()
+        self.timestamp_end=get_timestamp()
         set_config(self.get_config())
 
         import gc
@@ -207,7 +206,7 @@ class LoraTrainerWrap(BaseTrainerWrap):
         )
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
 
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
     def prepare_model_for_lora(self, model, **kwargs):
 
