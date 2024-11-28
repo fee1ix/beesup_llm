@@ -3,6 +3,9 @@ import os
 import yaml
 import copy
 
+from .system import *
+from .dict_utils import *
+
 
 def load_yaml(path):
 
@@ -125,6 +128,7 @@ def getattr_or_key(obj, key, val=None):
 
     return val
 
+
 def filter_attributes(
         input_obj,
         exclude_prefixes=['_','__'],
@@ -185,16 +189,20 @@ def filter_kwargs(the_kwargs, allowed_keys=[], ref=None, exclude_prefixes=['_'])
     return filtered_kwargs
 
 
+
 def get_cls_attrs(cls):
     return {key: value for key, value in cls.__dict__.items() if not key.startswith("__") and not callable(value) and not isinstance(value, classmethod)}
 
-def get_value_from_keypath(the_dict, keypath):
-
+def split_keypath(keypath):
     if isinstance(keypath,str):
         keypath_list=re.split(r'[\./]',keypath)
-
     elif isinstance(keypath,list):
         keypath_list=keypath
+    return keypath_list
+
+def get_value_from_keypath(the_dict, keypath):
+
+    keypath_list=split_keypath(keypath)
 
     def _recursive(the_dict, keypath_list):
         key = keypath_list[0]
@@ -208,19 +216,12 @@ def get_value_from_keypath(the_dict, keypath):
         
     return _recursive(the_dict, keypath_list)
 
-import pytz
-import datetime
-TIMEZONE = pytz.timezone('Europe/Berlin')
-
-def get_datetime():
-    return datetime.datetime.now(TIMEZONE)
-
 def is_valid_config(config):
     if getattr_or_key(config, 'type') is None: return False
     if getattr_or_key(config, 'id') is None: return False
     if getattr_or_key(config, 'path') is None: return False
     if getattr_or_key(config, 'name') is None: return False
-    if getattr_or_key(config, 'datetime_init') is None: return False
+    if getattr_or_key(config, 'timestamp_init') is None: return False
 
     return True
 
@@ -267,7 +268,7 @@ def get_config_from_none(**kwargs):
         id=id,
         name=name,
         path=f"{parent_dir_path}/{name}",
-        datetime_init=datetime.datetime.now(TIMEZONE),
+        timestamp_init=get_timestamp(),
         parent_lab_path=parent_lab_path,
         parent_dir_path=parent_dir_path
     )
