@@ -3,12 +3,9 @@ import numpy as np
 
 from ..toolkit.setup_utils import *
 
-
-
 def is_normalized_embs(embs):
     norm_embs = np.linalg.norm(embs, axis=1)
     return np.allclose(norm_embs, 1, atol=1e-6) # check if all embeddings are normalized
-
 
 def nodes_df_from_hdbscan(clusterer,chunks_df):
 
@@ -39,7 +36,6 @@ def nodes_df_from_hdbscan(clusterer,chunks_df):
 
     return nodes_df
 
-
 def assign_data_tree(node, df):
 
     # Base case: if the node is a leaf
@@ -61,32 +57,7 @@ def assign_data_tree(node, df):
         node.chunk = None
         return node.emb
 
-def propagate_emb(tree):
 
-    def _recursive(node):
-
-        if not node.children:  # Base case: if it's a leaf node, return its embedding
-            return getattr(node,'emb') if hasattr(node, 'emb') else None
-
-        # Collect embeddings from all descendants
-        embs = []
-        for child in node.children:
-            child_emb = _recursive(child)
-            if child_emb is not None:
-                embs.append(child_emb)
-        
-        # Calculate the mean embedding if there are any valid embeddings
-        mean_emb=None
-        if embs:
-            mean_emb = np.mean(embs, axis=0)
-            mean_emb = mean_emb / np.linalg.norm(mean_emb)  # Normalize the mean embedding
-            setattr(node,'emb',mean_emb)
-
-        return mean_emb
-    
-    _recursive(tree)
-
-    return tree
 
 
 def propagate_mean(tree, key, return_df=False):
@@ -176,8 +147,26 @@ def add_parent_embs(nodes_df):
     
     return nodes_df
 
+# ANYTREE UTILITY FUNCTIONS
+from anytree import Node, RenderTree, PreOrderIter, PostOrderIter
+ANYTREE_ATTRIBUTES=['is_leaf','is_root','size','depth','height']
 
-from anytree import Node, RenderTree, PreOrderIter
+def propagate_emb_from_leaves(tree):
+
+    for node in PostOrderIter(tree):
+        if node.is_leaf: continue
+        setattr(node,'emb',np.mean([child.emb for child in node.children],axis=0))
+
+    return 
+
+def add_emb_from_decendant_leaves(tree):
+    for node in PreOrderIter(tree):
+        if node.is_leaf: continue
+        setattr(node,'emb',np.mean([leaf.emb for leaf in node.leaves],axis=0))
+
+    return
+
+
 
 def to_anytree(nodes_df):
     # Step 1: Create a dictionary to hold nodes (each 'child_id' and 'parent_id' is a node)
