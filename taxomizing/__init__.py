@@ -16,7 +16,7 @@ import pickle
 
 
 class TaxomizingPipeline(BaseDirectory):
-    type='taxomizing'
+    type='taxomizing_pipeline'
 
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
@@ -30,7 +30,7 @@ class TaxomizingPipeline(BaseDirectory):
                 optimal_ordering=False
             )
         )
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
         if dataset_ref is not None:
             if isinstance(dataset_ref, pd.DataFrame):
@@ -108,9 +108,22 @@ class ScipyTaxomizingPipeline(TaxomizingPipeline):
                 cluster_selection_epsilon_max=float('inf'), #float('inf')
             )
         )
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
 
+class LinkageTaxomizingPipeline(TaxomizingPipeline):
+    def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
+        super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
+
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend([])
+
+        self._default_config=dict(
+
+        )
+        self.update_config(self._default_config, overwrite_if_conflict=False)
+    
+    
 
 
 
@@ -118,7 +131,6 @@ class ScipyTaxomizingPipeline(TaxomizingPipeline):
 class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
-
 
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend([])
@@ -140,7 +152,7 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
                 cluster_selection_epsilon_max=float('inf'), #float('inf')
             )
         )
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
     def get_cluster_config(self, **kwargs):
 
@@ -156,7 +168,6 @@ class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def load_clusterer(self, **kwargs):
         self.clusterer=hdbscan.HDBSCAN(**self.get_cluster_config(**kwargs))
 
-    
     def fit(self, data, **kwargs):
 
         cluster_config=self.get_cluster_config(**kwargs)
