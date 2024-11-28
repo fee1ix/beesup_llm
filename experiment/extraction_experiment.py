@@ -1,6 +1,8 @@
+import beesup_llm
 from beesup_llm import *
 from beesup_llm.toolkit.setup_utils import *
 from beesup_llm.toolkit.llm_utils import *
+from beesup_llm.toolkit.system import *
 
 from beesup_llm.model import *
 from beesup_llm.dataset import BaseDataset
@@ -15,7 +17,6 @@ class EvaluationCallback(TrainerCallback):
         pass
 
     def get_eval_df(self, model):
-        model.eval()
         eval_df=self.experiment.eval_df
         eval_df=self.experiment.pipeline(eval_df, model_ref=model)
         return eval_df
@@ -25,8 +26,8 @@ class EvaluationCallback(TrainerCallback):
         self.experiment.logger.info(f"Saved eval_df to {self.experiment.path}/{str(global_step).zfill(4)}_eval_df.pkl")
 
     def on_epoch_end(self, args, state, control, **kwargs):
-
         model=kwargs['model']
+        model.eval()
         eval_df=self.get_eval_df(model)
         self.save_eval_df(eval_df,state.global_step)
         
@@ -35,20 +36,38 @@ class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
 
     @classmethod
-    def get_pending(cls):
+    def spawn_multirun_config(cls, the_input=None):
+ 
+        if isinstance(the_input, pd.DataFrame):
+            multirun_df=the_input
 
-        parent_lab_path = extract_lab_path(os.getcwd())
-        parent_dir_path = f'{parent_lab_path}/{cls.type}s'
-        ids=get_ids(parent_dir_path)
+        elif isinstance(the_input, list):
+            if all(isinstance(x, int) for x in the_input):
+                overview_df=cls.get_overview()
+                multirun_df=overview_df[overview_df['id'].isin(the_input)]
 
-        pending_list=[]
-        for id in ids:
-            config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml")
-            if not config_dict['done']: 
-                pending_list.append(config_dict)
+        elif the_input is None:
+            overview_df=cls.get_overview(keypaths=['done'])
+            multirun_df=overview_df[overview_df['done']==False].copy()
+            multirun_df.reset_index(drop=True, inplace=True)
         
-        return pending_list
-    
+
+        multirun_config=dict(
+            framework_dirs=[os.path.dirname(path) for path in beesup_llm.__path__], #add as sys path in the run script
+            module_path=__file__,
+            script_path=f"{os.path.dirname(__file__)}/multirun_script.py",
+            experiment_dirs=multirun_df.path.values.tolist(),
+        )
+
+        save_yaml(multirun_config, f"{cls.get_dir_path()}/multirun_config.yaml")
+        cls.logger.info(f"Saved multirun_config to {cls.get_dir_path()}/multirun_config.yaml")
+
+        print()
+        print("Run the following command to start the multirun:")
+        print(f"\tconda activate beesup; python {multirun_config['script_path']} {cls.get_dir_path()}/multirun_config.yaml")
+        print()
+
+        return multirun_df
 
 
     def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
@@ -59,6 +78,7 @@ class ExtractionExperiment(BaseDirectory):
 
         self._default_config=dict(
             done = False,
+            seed = 55,
             do_eval_base_model=True,
 
             generation_config=dict(
@@ -70,24 +90,21 @@ class ExtractionExperiment(BaseDirectory):
             ),
 
             trainer_args=dict(
-                seed=42,
-                num_train_epochs=2,
+                num_train_epochs=10,
                 learning_rate=0.0002,
                 output_dir=f"{self.path}",
                 save_strategy='no',
                 logging_strategy='steps',
                 logging_steps=1,
                 logging_first_step=True,
-                
                 eval_strategy='no',
                 do_eval=False,
             ),
 
         )
 
-        self.update_attributes(self._default_config, overwrite=False)
-
-
+        self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.trainer_args['seed']=self.seed
 
         model_ref = model_ref or getattr(self, 'model_config', None)
         if model_ref is not None:
@@ -156,17 +173,14 @@ class ExtractionExperiment(BaseDirectory):
         self.train_ds=train_ds
         self.eval_ds=eval_ds
 
-    def get_trainer(self,**kwargs):
+    def get_trainer(self, model=None, **kwargs):
+        assert model is not None, "model must be passed"
+
         self.logger.info(f"Loading Trainer")
-        
-        self.load_data(**kwargs)
 
-        model=kwargs.get('model')
+        # trainer_args=self.get_updated_config(kwargs, 'trainer_args')
+        # self.logger.debug(f"trainer_args: {trainer_args}")
 
-        #trainer_args=self.get_updated_config(kwargs, 'trainer_args')
-        #self.logger.info(f"Trainer Args: {trainer_args}")
-
-    
         trainer= self.trainwrap.get_trainer(
             model=model,
             tokenizer=self.modelwrap.get_training_tokenizer(),
@@ -185,11 +199,19 @@ class ExtractionExperiment(BaseDirectory):
         eval_df=eval_callback.get_eval_df(model)
         eval_callback.save_eval_df(eval_df,0)
 
-
     def run(self,**kwargs):
+
         self.logger.info(f"RUNNING")
-        self.timestam_run=get_datetime()
+        set_seeds(self.seed)
+
+        if self.done:
+            self.logger.info(f"Already done. Skipping.")
+            return
+
+        self.timestamp_run=get_timestamp()
         base_model=self.modelwrap.get_model()
+
+        self.load_data(**kwargs)
 
         if self.do_eval_base_model:
             self.evaluate_base_model(model=base_model)
@@ -197,13 +219,13 @@ class ExtractionExperiment(BaseDirectory):
         trainer=self.get_trainer(model=base_model,**kwargs)
         trainer_args=trainer.args.to_dict()
         save_yaml(trainer_args, f"{self.path}/trainer_args.yaml")
-        
+
         trainer.train()
 
         self.done=True
-        self.timestam_done=get_datetime()
+        self.timestamp_done=get_timestamp()
         set_config(self.get_config())
-
+        return
 
     def get_evals_df(self):
 
@@ -224,16 +246,22 @@ class ExtractionExperiment(BaseDirectory):
 
 if __name__ == '__main__':
     import sys
+    import logging
 
     if len(sys.argv) != 2:
         print("Usage: python experiment_module.py <config_path>")
         sys.exit(1)
-    
-    config_path=sys.argv[1]
-    print(f"Starting experiment from config: {config_path}")
-    os.chdir(config_path)
+
+    experiment_dir=sys.argv[1]
+    os.chdir(experiment_dir)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        #level=logging.DEBUG,
+        format='%(asctime)s - %(filename)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s')
+
     # Initialize and run the experiment
-    experiment = ExtractionExperiment(config_path)
+    experiment = ExtractionExperiment(experiment_dir)
     experiment.run()
 
     
