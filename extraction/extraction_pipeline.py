@@ -20,14 +20,14 @@ class ExtractionSample(object):
 
         for k,val in kwargs.items(): 
             setattr(self,k,val)
-
+     
         assert hasattr(self, 'pred_completion'), "missing 'pred_completion'"
         self.parse_json(prefix='pred', exclude_none=True)
         self.parse_df(prefix='pred')
 
     def parse_json(self, prefix='pred', exclude_none=True):
         completion=getattr(self, f'{prefix}_completion')
-        the_json, is_valid, is_empty=pydantic_parse(completion, exclude_none)
+        the_json, is_valid, is_empty = pydantic_parse(completion, exclude_none)
 
         if is_valid==False:
             the_json={k:None for k in ExtractionScheme4MultipeObservations.model_fields.keys()}
@@ -79,7 +79,7 @@ class ExtractionPipeline(BaseDirectory):
             use_extraction_prompt=True,
             use_few_shots=True
         )
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
         # if dataset_ref is not None:
         #     if isinstance(dataset_ref, pd.DataFrame):
@@ -121,7 +121,6 @@ class ExtractionPipeline(BaseDirectory):
         
         return self.get_pred_parse_only(pred_completion,**kwargs)
 
-
     def prepare_df_for_completion(self, df, **kwargs):
         assert 'report_passage' in df.columns, "df must have 'prompt_messages' column"
         df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
@@ -148,7 +147,7 @@ class ExtractionPipeline(BaseDirectory):
     def get_pred_df_parse_only(df,*kwargs):
         assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
         
-        #df[['pred_json','pred_is_valid','pred_is_empty']]=None,
+        df[['pred_json','pred_is_valid','pred_is_empty']]=None,None,None
         for i,row in df.iterrows():
             try:
                 sample=ExtractionSample(pred_completion=row['pred_completion'])
