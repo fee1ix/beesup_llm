@@ -3,6 +3,7 @@ import os
 import warnings
 from .toolkit import *
 from .toolkit.setup_utils import *
+from .toolkit.system import *
 
 # from beesup_llm.dataset import BaseDataset
 # from beesup_llm.training import BaseTraining
@@ -15,9 +16,6 @@ from typing import Optional
 
 import pandas as pd
 
-import pytz
-import datetime
-TIMEZONE = pytz.timezone('Europe/Berlin')
 
 
 class Lab(object):
@@ -84,21 +82,26 @@ class BaseDirectory(object):
 
 
     @classmethod
+    def get_dir_path(cls):
+        parent_lab_path = extract_lab_path(os.getcwd())
+        return f'{parent_lab_path}/{cls.type}s'
+
+
+    @classmethod
     def get_overview(cls, keypaths=[]):
 
         _keypaths=['path','id','name']+keypaths
+        dir_path=cls.get_dir_path()
 
-        parent_lab_path = extract_lab_path(os.getcwd())
-        parent_dir_path = f'{parent_lab_path}/{cls.type}s'
-
-        if not os.path.exists(parent_dir_path): raise FileNotFoundError(f"{parent_dir_path} does not exist")
+        if not os.path.exists(dir_path): raise FileNotFoundError(f"{dir_path} does not exist")
 
         overview_data=[]
-        ids=get_ids(parent_dir_path)
+        ids=get_ids(dir_path)
+
         for id in ids:
             overview_row=dict()
 
-            config_path=f"{parent_dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml"
+            config_path=f"{dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml"
             if not os.path.exists(config_path):
                 cls.logger.warning(f"{config_path} does not exist")
                 continue
@@ -106,9 +109,12 @@ class BaseDirectory(object):
             config_dict = load_dict(config_path)
 
             for keypath in _keypaths:
-                value=get_value_from_keypath(config_dict, keypath)
 
-                if value is not None: overview_row[keypath]=value
+                #TODO: only set last key of keypath to overview dataframe
+                keypath_list=split_keypath(keypath)
+                value=get_value_from_keypath(config_dict, keypath_list)
+
+                if value is not None: overview_row[keypath_list[-1]]=value
             
             overview_data.append(overview_row)
         
@@ -128,12 +134,12 @@ class BaseDirectory(object):
 
         config_dict=get_config_from_ref(ref,**kwargs)
 
-        self.update_attributes(config_dict, overwrite=True)
+        self.update_config(config_dict, overwrite_if_conflict=True)
         self.logger.info(f"{self.name.upper()} initialised")
 
     def reinit_config(self):
         new_config=get_config_from_none(type=self.type)
-        self.update_attributes(new_config, overwrite=True)
+        self.update_config(new_config, overwrite_if_conflict=True)
 
     def get_updated_config(self, kwargs, config_key='some_config'):
 
@@ -172,13 +178,36 @@ class BaseDirectory(object):
         set_config(self.get_config())
         self.logger.info(f"{self.name.upper()} config spawned at {self.path}")
 
+    def set_default_config(self):
+        if not hasattr(self, '_default_config'): self._default_config=dict()
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
-    def update_attributes(self, new_dict, overwrite=True):
-        updated_config = update_nested_dict(self.get_config(), new_dict, overwrite)
 
-        for k, v in updated_config.items():
-            setattr(self, k, v)
+    def update_config_smart(self, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True, allow_new_atomic_keys=False, allow_new_nested_keys=False):
+
+        updated_config_dict=update_dict_smart(
+            self.get_config(),
+            mixin_dict,
+            overwrite_if_conflict=overwrite_if_conflict,
+            interpret_none_as_val=interpret_none_as_val,
+            allow_new_atomic_keys=allow_new_atomic_keys,
+            allow_new_nested_keys=allow_new_nested_keys
+            )
         
+        for k, v in updated_config_dict.items(): setattr(self, k, v)
+        return
+
+
+    def update_config(self, mixin_dict, overwrite_if_conflict=True, interpret_none_as_val=True):
+
+        updated_config_dict = update_dict(
+            self.get_config(),
+            mixin_dict,
+            overwrite_if_conflict=overwrite_if_conflict,
+            interpret_none_as_val=interpret_none_as_val
+            )
+        
+        for k, v in updated_config_dict.items(): setattr(self, k, v)
         return
 
     def get_max_id(self):
