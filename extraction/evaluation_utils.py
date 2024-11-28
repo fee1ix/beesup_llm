@@ -824,7 +824,7 @@ def get_conf_dict(errors_df):
 
     #OBSERVATION VALUES
     selected_df=errors_df[(errors_df.g!=0)&(errors_df.p!=0)]
-    conf_dict['obs_vals']={
+    conf_dict['attr']={
         'tp':len(selected_df[selected_df.type.isin(['tp_val'])]),
         'tp_fuzzy':selected_df[selected_df.type.isin(['tp_val'])]['fuzzy_score'].sum(),
         'fp':len(selected_df[selected_df.type.isin(['fp_val'])]),
@@ -860,6 +860,6 @@ def get_eval_dict(conf_dict):
             score=metric_func(**conf_dict[scope],fast_return=fast_return)
             eval_dict[scope][metric_func.label]=score
 
-    eval_dict['total_score']=eval_dict['obs']['F1']*eval_dict['obs_vals']['F1_fuzzy']
+    eval_dict['total_score']=eval_dict['obs']['F1']*eval_dict['attr']['F1_fuzzy']
     
     return eval_dict
