@@ -10,6 +10,7 @@ class EvaluationSample(ExtractionSample):
         self.gold_completion=gold_completion
 
         assert hasattr(self, 'gold_completion'), "missing 'gold_completion'"
+
         self.parse_json(prefix='gold', exclude_none=True)
         self.parse_df(prefix='gold')
 
@@ -73,7 +74,6 @@ class EvaluationSample(ExtractionSample):
         return ''
 
 
-
 class EvaluationPipeline(ExtractionPipeline):
     type='evaluation_pipeline'
 
@@ -85,7 +85,7 @@ class EvaluationPipeline(ExtractionPipeline):
         self._config_keys_to_exclude.extend([])
 
         self._default_config=dict()
-        self.update_attributes(self._default_config, overwrite=False)
+        self.update_config(self._default_config, overwrite_if_conflict=False)
 
     
     def get_eval(self, gold_completion=None, pred_completion=None, **kwargs):
@@ -104,9 +104,22 @@ class EvaluationPipeline(ExtractionPipeline):
 
         return df
     
+    #def get_condensed_eval(self, df, **kwargs):
 
 
-    #def __call__()
+
+
+
+    def __call__(self, the_input, condense=False, **kwargs):
+
+        if isinstance(the_input,pd.DataFrame):
+
+            if condense:
+                # df=self.get_eval_df(the_input, **kwargs)
+                # condensed_row=
+                return self.get_eval(the_input, **kwargs)
+
+            return self.get_eval_df(the_input, **kwargs)
 
 
 
