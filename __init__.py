@@ -2,8 +2,11 @@
 import os
 import warnings
 from .toolkit import *
-from .toolkit.setup_utils import *
 from .toolkit.system import *
+from .toolkit.dict_utils import *
+from .toolkit.setup_utils import *
+
+
 
 # from beesup_llm.dataset import BaseDataset
 # from beesup_llm.training import BaseTraining
@@ -123,22 +126,79 @@ class BaseDirectory(object):
 
     def __init__(self, ref=None, **kwargs):
 
-        self._config_key_order=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path']
+        self._default_config=dict(
+            type=self.type,
+            id=None,
+            name=None,
+            path=None,
+            parent_dir_path=None,
+            parent_lab_path=None,
+            timestamp_init=get_timestamp(),
+        )
+        self._config_key_order=list(self._default_config.keys())
         self._config_keys_to_exclude=['logger','from_ref']
 
-        kwargs.update(self.get_config())
-        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        self.logger.debug(f"ref: {ref}")
+        self.logger.debug(f"kwargs: {kwargs}")
 
-        for k,v in kwargs.items():
-            setattr(self,k,v)
+        init_kwargs=update_dict_smart(
+            orign_dict=self._default_config, 
+            mixin_dict=kwargs, 
+            interpret_none_as_val=True,
+            overwrite_if_conflict=True,
+            allow_new_atomic_keys=False,
+            allow_new_nested_keys=False,
+            )
+        
+        self.logger.debug(f"init_kwargs: {init_kwargs}")
 
-        config_dict=get_config_from_ref(ref,**kwargs)
-
+        config_dict=get_config_from_ref(ref,**init_kwargs)
         self.update_config(config_dict, overwrite_if_conflict=True)
+
         self.logger.info(f"{self.name.upper()} initialised")
 
+    
+    def update_config(self, mixin_dict, overwrite_if_conflict=True, interpret_none_as_val=True):
+        
+        #self.logger.debug(f"mixin_dict: {mixin_dict}")
+
+        updated_config_dict = update_dict(
+            self.get_config(),
+            mixin_dict,
+            overwrite_if_conflict=overwrite_if_conflict,
+            interpret_none_as_val=interpret_none_as_val
+            )
+        
+        #self.logger.debug(f"updated_config_dict: {mixin_dict}")
+        for k, v in updated_config_dict.items(): setattr(self, k, v)
+        return
+    
+    def update_config_smart(self, 
+                            mixin_dict, 
+                            interpret_none_as_val=True, 
+                            overwrite_if_conflict=True, 
+                            allow_new_atomic_keys=False, 
+                            allow_new_nested_keys=False
+                            ):
+        
+        #self.logger.debug(f"mixin_dict: {mixin_dict}")
+        
+        updated_config_dict=update_dict_smart(
+            self.get_config(),
+            mixin_dict,
+            interpret_none_as_val=interpret_none_as_val,
+            overwrite_if_conflict=overwrite_if_conflict,
+            allow_new_atomic_keys=allow_new_atomic_keys,
+            allow_new_nested_keys=allow_new_nested_keys
+            )
+        
+        #self.logger.debug(f"updated_config_dict: {mixin_dict}")
+        for k, v in updated_config_dict.items(): setattr(self, k, v)
+        return
+        
+   
     def reinit_config(self):
-        new_config=get_config_from_none(type=self.type)
+        new_config=get_config_from_type(type=self.type)
         self.update_config(new_config, overwrite_if_conflict=True)
 
     def get_updated_config(self, kwargs, config_key='some_config'):
@@ -157,6 +217,10 @@ class BaseDirectory(object):
 
         self.logger.debug(f"updated_config: {base_config}")
         return base_config
+    
+
+
+
 
     def spawn_config(self):
 
@@ -197,18 +261,6 @@ class BaseDirectory(object):
         for k, v in updated_config_dict.items(): setattr(self, k, v)
         return
 
-
-    def update_config(self, mixin_dict, overwrite_if_conflict=True, interpret_none_as_val=True):
-
-        updated_config_dict = update_dict(
-            self.get_config(),
-            mixin_dict,
-            overwrite_if_conflict=overwrite_if_conflict,
-            interpret_none_as_val=interpret_none_as_val
-            )
-        
-        for k, v in updated_config_dict.items(): setattr(self, k, v)
-        return
 
     def get_max_id(self):
         assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
