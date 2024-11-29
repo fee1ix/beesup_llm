@@ -225,10 +225,7 @@ def is_valid_config(config):
 
     return True
 
-def get_config_from_id(id, **kwargs):
-    assert 'type' in kwargs, "missing type"; type = kwargs.get('type')
-
-    logging.debug(f"get_config_from_id: {id}, kwargs: {kwargs}\n")
+def get_config_from_id(id, type=None):
 
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
@@ -236,23 +233,31 @@ def get_config_from_id(id, **kwargs):
     config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{type}/config.yaml")
     return config_dict
 
-def get_config_from_path(path, **kwargs):
+def get_config_from_path(path):
     if not path.endswith('config.yaml'):
         path = f"{path}/config.yaml"
     assert path.endswith('config.yaml'), "path must point to a 'config.yaml'"
     config_dict = load_dict(path)
     return config_dict
 
-def get_config_from_dict(the_dict, **kwargs):
-    the_dict.update(kwargs)
+def get_config_from_dict(the_dict):
+
+    if not is_valid_config(the_dict):
+
+        if the_dict.get('path', None): return get_config_from_path(the_dict['path'])
+        if the_dict.get('id', None) and the_dict.get('type',None): return get_config_from_id(the_dict['id'], the_dict['type'])
+        if the_dict.get('type', None): return get_config_from_type(the_dict['type'])
+        else : 
+            logging.info(f"Invalid config dictionary: {the_dict}")
+            raise ValueError("Invalid config dictionary.")
+
     return the_dict
 
-def get_config_from_obj(obj, **kwargs):
+def get_config_from_obj(obj):
     assert hasattr(obj, 'get_config'), "object must have a 'get_config' method"
     return obj.get_config()
 
-def get_config_from_none(**kwargs):
-    assert 'type' in kwargs, "missing type"; type = kwargs.get('type')
+def get_config_from_type(type=None):
 
     parent_lab_path = extract_lab_path(os.getcwd())
     parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
@@ -275,7 +280,7 @@ def get_config_from_none(**kwargs):
 
 def get_config_from_model(model,**kwargs):
 
-    config_dict=get_config_from_none(**kwargs)
+    config_dict=get_config_from_type(**kwargs)
     config_dict.update(
         name_or_path=getattr_or_key(model, 'name_or_path'),
         model=model
@@ -290,15 +295,21 @@ def get_config_from_ref(ref, **kwargs):
     logging.debug(f"get_config_from_ref: {ref}, kwargs: {kwargs}\n")
 
     if ref is None:
-        return get_config_from_none(**kwargs)
+        return get_config_from_type(type=kwargs['type'])
+    
     if isinstance(ref, int):
-        return get_config_from_id(ref, **kwargs)
+        return get_config_from_id(ref, type=kwargs['type'])
+    
     elif isinstance(ref, str):
-        return get_config_from_path(ref, **kwargs)
+        return get_config_from_path(ref)
+    
     elif isinstance(ref, dict):
-        return get_config_from_dict(ref, **kwargs)
+        ref.update(kwargs)
+        return get_config_from_dict(ref)
+    
     elif hasattr(ref, 'get_config'):
-        return get_config_from_obj(ref, **kwargs)
+        return get_config_from_obj(ref)
+    
     else:
         import torch
         if isinstance(ref, torch.nn.Module):
