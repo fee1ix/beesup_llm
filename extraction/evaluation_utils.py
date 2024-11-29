@@ -131,8 +131,10 @@ def tabelize_json(base_json, create_meta_row=True):
     meta_row={k.replace('meta_',''):v for k,v in base_json.items() if k != "observations"}
     meta_emty=all([val==None for val in meta_row.values()])
 
+    print(base_json)
     obs_rows=base_json["observations"]
     obs_emty=(obs_rows==None)
+
 
     if meta_emty and obs_emty: #all emty
         table_df=pd.DataFrame(columns=meta_row.keys()) #emty dataframe only with headers
