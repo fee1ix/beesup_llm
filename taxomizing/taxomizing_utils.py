@@ -151,6 +151,64 @@ def add_parent_embs(nodes_df):
 from anytree import Node, RenderTree, PreOrderIter, PostOrderIter
 ANYTREE_ATTRIBUTES=['is_leaf','is_root','size','depth','height']
 
+def get_tree_info_dict(tree):
+    nodes=list(PreOrderIter(tree))
+
+    tree_info_dict=dict(
+        num_nodes=tree.size,
+        height=tree.height,
+        num_root_children=len(tree.children),
+        num_leaves=[n.is_leaf for n in nodes].count(True),
+        num_per_height=[len([n for n in PreOrderIter(tree) if n.height==h]) for h in range(tree.height,0,-1)][:10],
+        #mean_num_children=np.mean(np.array([len(n.children) for n in nodes if not n.height<=1])),
+        #mean_num_inner_children=np.mean(np.array([len([c for c in n.children if not c.is_leaf]) for n in nodes if not n.height<=1])),
+        #mean_num_inner_children=np.mean(np.array([len(n.children) for n in nodes if n.is_leaf])),
+    )
+
+    return tree_info_dict
+
+def linkage_to_btree(linkage_matrix, chunks_df):
+    nodes={}
+
+    # create leaf nodes
+    for i, chunk_row in chunks_df.iterrows():
+        node=Node(i)
+
+        for k,v in chunk_row.items():
+            if k in ANYTREE_ATTRIBUTES: continue
+            node.__setattr__(k,v)
+        
+        node.__setattr__('dist',0.0)
+        node.__setattr__('is_chunk',True)
+        nodes[i]=node
+
+    #create internal nodes
+    n_leaves=len(chunks_df)
+    for i, (left_child_id,right_child_id,dist,size) in enumerate(linkage_matrix):
+        node_id=n_leaves+i
+        node=Node(node_id)
+        node.__setattr__('dist',dist)
+        node.__setattr__('is_chunk',False)
+
+        nodes[node_id]=node
+        nodes[int(left_child_id)].parent=nodes[node_id]
+        nodes[int(right_child_id)].parent=nodes[node_id]
+
+    root=nodes[len(linkage_matrix) + n_leaves - 1]
+    return root
+
+def add_ddist(tree):
+
+    for node in PreOrderIter(tree):
+        
+        if not node.parent: continue
+        if not hasattr(node,'dist'): continue
+        if not hasattr(node.parent,'dist'): continue
+
+        node.__setattr__('ddist',node.parent.dist-node.dist)
+    
+    return 
+
 def propagate_emb_from_leaves(tree):
 
     for node in PostOrderIter(tree):
@@ -165,6 +223,193 @@ def add_emb_from_decendant_leaves(tree):
         setattr(node,'emb',np.mean([leaf.emb for leaf in node.leaves],axis=0))
 
     return
+
+def add_leaf_attrs_from_df(tree, df):
+
+    for leaf in tree.leaves:
+        leaf_id=leaf.name
+        leaf_row=df.iloc[leaf_id]
+
+        for k,v in leaf_row.items():
+            if k in ANYTREE_ATTRIBUTES: continue
+            leaf.__setattr__(k,v)
+
+    return
+
+from kneed import KneeLocator
+import matplotlib.pyplot as plt
+
+# dist flattening --> vertical!!
+def get_dist_kneepoint(tree, include_leaves=True ,plot=False):
+
+    if include_leaves:
+        sorted_dists=sorted([n.dist for n in PreOrderIter(tree)])
+    else:
+        sorted_dists=sorted([n.dist for n in PreOrderIter(tree) if not n.is_leaf])
+
+
+    knee_index = KneeLocator(list(range(len(sorted_dists))), sorted_dists, curve="convex", direction="increasing").knee
+    knee_dist = sorted_dists[knee_index]
+
+    logging.info(f'knee_dist: {knee_dist:.4f}, knee_index: {knee_index}/ {len(sorted_dists)}')
+
+    if plot:
+        plt.figure(figsize=(18, 5))
+        plt.plot(sorted_dists)
+
+        plt.axhline(y=knee_dist, color='red', linestyle='-', linewidth=0.5)
+        plt.axvline(x=knee_index, color='red', linestyle='-', linewidth=0.5)
+        plt.ylabel('dist')
+
+        plt.grid(True)
+        plt.show()
+
+    return knee_dist, knee_index
+
+def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
+
+    if include_leaves:
+        sorted_dists=np.array(sorted([n.dist for n in PreOrderIter(tree)]))
+    else:
+        sorted_dists=np.array(sorted([n.dist for n in PreOrderIter(tree) if not n.is_leaf]))
+
+    threshold_dist=std_factor*sorted_dists.std()
+    threshold_index=np.searchsorted(sorted_dists, threshold_dist, side="right")
+
+    logging.info(f'threshold_dist: {threshold_dist:.4f}, threshold_index: {threshold_index}/ {len(sorted_dists)}')
+
+    if plot:
+        plt.figure(figsize=(18, 5))
+        plt.plot(sorted_dists)
+
+        plt.axhline(y=threshold_dist, color='red', linestyle='-', linewidth=0.5)
+        plt.axvline(x=threshold_index, color='red', linestyle='-', linewidth=0.5)
+        plt.ylabel('dist')
+
+        plt.grid(True)
+        plt.show()
+    
+    return threshold_dist, threshold_index
+
+def get_dist_sorted_nodes(tree):
+    #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
+    return sorted((n for n in PreOrderIter(tree) if not n.is_chunk), key=lambda node: getattr(node, 'dist', np.inf))
+
+def do_dist_flattening(tree, threshold_dist=None):
+
+    tree=copy.deepcopy(tree)
+    dist_sorted_nodes= get_dist_sorted_nodes(tree)
+    deleted_nodes=[]
+
+    while True:
+        node=dist_sorted_nodes.pop(0)
+
+        if node.dist >= threshold_dist: break
+
+        for child in node.children:
+            child.parent=node.parent
+            child.dist=node.parent.dist 
+
+        node.parent=None
+        deleted_nodes.append(node.name)
+    
+    return tree
+
+# ddist flattening --> horizontal!!
+def get_ddist_kneepoint(tree, include_leaves=True, plot=False):
+
+    if include_leaves:
+        sorted_ddists=sorted([n.ddist for n in tree.descendants])
+    else:
+        sorted_ddists=sorted([n.ddist for n in tree.descendants if not n.is_leaf])
+
+    knee_index = KneeLocator(list(range(len(sorted_ddists))), sorted_ddists, curve="convex", direction="increasing").knee
+    knee_ddist = sorted_ddists[knee_index]
+
+    logging.info(f'knee_ddist: {knee_ddist:.4f}, knee_index: {knee_index}/ {len(sorted_ddists)}')
+
+    if plot:
+        plt.figure(figsize=(18, 5))
+        plt.plot(sorted_ddists)
+        #plt.scatter(knee_index, knee_dist, color="red", s=100, label="Kneepoint", marker='x')
+
+        plt.axhline(y=knee_ddist, color='red', linestyle='-', linewidth=0.5)
+        plt.axvline(x=knee_index, color='red', linestyle='-', linewidth=0.5)
+        plt.ylabel('ddist')
+
+        #plt.ylim(0, 0.01)  # Adjust the y-axis range
+        plt.grid(True)
+        plt.show()
+
+    return knee_ddist, knee_index
+
+def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
+
+    if include_leaves:
+        sorted_ddists=np.array(sorted([n.ddist for n in tree.descendants]))
+    else:
+        sorted_ddists=np.array(sorted([n.ddist for n in tree.descendants if not n.is_leaf]))
+
+    threshold_ddist=std_factor*sorted_ddists.std()
+    threshold_index=np.searchsorted(sorted_ddists, threshold_ddist, side="right")
+
+    logging.info(f'threshold_ddist: {threshold_ddist:.4f}, threshold_index: {threshold_index}/ {len(sorted_ddists)}')
+
+    if plot:
+        plt.figure(figsize=(18, 5))
+        plt.plot(sorted_ddists)
+
+        plt.axhline(y=threshold_ddist, color='red', linestyle='-', linewidth=0.5)
+        plt.axvline(x=threshold_index, color='red', linestyle='-', linewidth=0.5)
+        plt.ylabel('ddist')
+
+        plt.grid(True)
+        plt.show()
+    
+    return threshold_ddist, threshold_index
+
+def get_ddist_sorted_nodes(tree):
+    #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
+    return sorted((n for n in PreOrderIter(tree) if not n.is_chunk), key=lambda node: getattr(node, 'ddist', np.inf))
+
+def do_ddist_flattening(tree, threshold_ddist=None):
+    tree=copy.deepcopy(tree)
+    add_ddist(tree)
+    ddist_sorted_nodes= get_ddist_sorted_nodes(tree)
+
+    deleted_nodes=[]
+    affected_nodes=[]
+
+    i=0
+    while True:
+        node=ddist_sorted_nodes.pop(0)
+
+        if node.ddist >= threshold_ddist: break
+  
+        children=[child for child in node.children]
+
+        if any(c.name in affected_nodes for c in children):
+            ddist_sorted_nodes= get_ddist_sorted_nodes(tree)
+            #print(f"i={i}\taffected_children: {len(affected_nodes)}\tdeleted_nodes: {len(deleted_nodes)}"+25*" ")
+            affected_nodes=[]
+            continue
+
+        for child in children:
+            child.ddist=node.parent.dist-child.dist
+            child.parent=node.parent
+            affected_nodes.append(child.name)
+
+        node.parent=None
+        deleted_nodes.append(node.name)
+
+        i+=1
+        # if verbose:
+        #     print(f"i={i} {len(deleted_nodes)}/{num_delete_nodes}\t"+25*" ",end='\r')
+    
+    return tree
+
+
+
 
 
 
