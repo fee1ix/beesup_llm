@@ -82,6 +82,22 @@ def filter_dict_keylist(the_dict, keylist=[], invert=False):
     
     return _recursive(the_dict)
 
+def filter_dict_keydict(the_dict, ref_dict):
+
+    def _recursive(the_dict,ref_dict):
+        new_dict=dict()
+        for k,v in the_dict.items():
+            if k in ref_dict:
+
+                if isinstance(v, dict):
+                    new_dict[k]=_recursive(v, ref_dict[k])
+                else:
+                    new_dict[k]=v
+
+        return new_dict
+
+    return _recursive(the_dict, ref_dict)
+
 
 
 def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True):
@@ -106,7 +122,22 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
 
     return _recursive(orign_dict, mixin_dict)
 
-def get_keypath_dict(the_dict,key):
+
+def get_dict_value_from_keypath(the_dict, keypath):
+
+    def _recursive(the_dict, keypath):
+        key = keypath[0]
+        if key in the_dict:
+            if len(keypath)>1:
+                return _recursive(the_dict[key], keypath[1:])
+            else:
+                return the_dict[key]
+        else:
+            return None
+        
+    return _recursive(the_dict, keypath)
+
+def get_dict_keypath(the_dict,key):
 
     all_keys=get_keys(the_dict, atomic_only=False)
     #print(is_unique(key,all_keys),key,all_keys)
@@ -123,7 +154,7 @@ def get_keypath_dict(the_dict,key):
     
     return _recursive(the_dict, key)
 
-def set_keypath(the_dict, keypath, value, inplace=False):
+def set_dict_keypath(the_dict, keypath, value, inplace=False):
 
     def _recursive(d, kp, val):
         if len(kp) == 1:
@@ -140,7 +171,27 @@ def set_keypath(the_dict, keypath, value, inplace=False):
         new_dict=copy.deepcopy(the_dict)
         _recursive(new_dict, keypath, value)
         return new_dict
-    
+
+def del_dict_keypath(the_dict, keypath, inplace=False):
+
+    def _recursive(d, kp):
+        if len(kp) == 1:
+            del d[kp[0]]
+        else:
+            if kp[0] not in d:
+                d[kp[0]] = {}
+            _recursive(d[kp[0]], kp[1:])
+
+    if inplace:
+        _recursive(the_dict, keypath)
+        return the_dict
+    else:
+        new_dict=copy.deepcopy(the_dict)
+        _recursive(new_dict, keypath)
+        return new_dict 
+
+
+
 def nestify_dict_like(the_dict, ref_dict):
     ref_keys = get_keys(ref_dict)
     the_keys = get_keys(the_dict)
@@ -150,13 +201,16 @@ def nestify_dict_like(the_dict, ref_dict):
         if not is_unique(k,ref_keys): continue; logging.warning(f"key '{k}' is not unique in the reference dictionary.")
         if not is_unique(k,the_keys): continue; logging.warning(f"key '{k}' is not unique in the dictionary.")
 
-        the_keypath=get_keypath_dict(the_dict, k)
-        ref_keypath=get_keypath_dict(ref_dict, k)
+        the_keypath=get_dict_keypath(the_dict, k)
+        ref_keypath=get_dict_keypath(ref_dict, k)
 
         if the_keypath != ref_keypath:
 
-            the_dict=set_keypath(the_dict, ref_keypath, the_dict[k])
-            del the_dict[k]
+            the_value=get_dict_value_from_keypath(the_dict, the_keypath)
+            the_dict=set_dict_keypath(the_dict, ref_keypath, the_value)
+            #the_dict=set_dict_keypath(the_dict, ref_keypath, the_dict[k])
+            the_dict=del_dict_keypath(the_dict, the_keypath)
+            #del the_dict[k]
 
     return the_dict
 
