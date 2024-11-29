@@ -73,80 +73,73 @@ class ExtractionExperiment(BaseDirectory):
     def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
 
-        self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','modelwrap','pipeline','dataset'])
-
         self._default_config=dict(
             done = False,
             seed = 55,
             do_eval_base_model=True,
 
-            generation_config=dict(
-                do_sample=False,
+            model_config=dict(
+                generation_config=dict(
+                    do_sample=False,
+                ),
+                dataloader_config=dict(
+                    batch_size=10,
+                ),
             ),
 
-            dataloader_config=dict(
-                batch_size=8,
+            trainer_config=dict(
+                trainer_args=dict(
+                    num_train_epochs=10,
+                    output_dir=f"{self.path}",
+                    save_strategy='no',
+                    eval_strategy='no',
+                    do_eval=False,
+                ),
             ),
-
-            trainer_args=dict(
-                num_train_epochs=10,
-                learning_rate=0.0002,
-                output_dir=f"{self.path}",
-                save_strategy='no',
-                logging_strategy='steps',
-                logging_steps=1,
-                logging_first_step=True,
-                eval_strategy='no',
-                do_eval=False,
-            ),
-
         )
 
+        self._config_key_order.extend(list(self._default_config.keys()))
+        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','modelwrap','pipeline','dataset'])
+
+
+        self.logger.debug(f"ref: {ref}")
+        self.logger.debug(f"kwargs: {kwargs}")
+
         self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.trainer_args['seed']=self.seed
+
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
+
+
+        self.trainer_config['trainer_args']['seed']=self.seed
 
         model_ref = model_ref or getattr(self, 'model_config', None)
         if model_ref is not None:
             self.modelwrap=GenModelWrap.from_ref(model_ref)
-            if not self.modelwrap.is_spawned(): self.modelwrap.spawn()
-            self.model_config=self.get_updated_sub_config(self.modelwrap.get_config())
-
+            self.update_config(dict(model_config=self.modelwrap.get_config()), overwrite_if_conflict=False)
+            
         dataset_ref = dataset_ref or getattr(self, 'dataset_config', None)
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
-            if not self.dataset.is_spawned(): self.dataset.spawn()
-            self.dataset_config=self.get_updated_sub_config(self.dataset.get_config())
+            self.update_config(dict(dataset_config=self.dataset.get_config()), overwrite_if_conflict=False)
+        
 
         trainer_ref = trainer_ref or getattr(self, 'trainer_config', None)
         if trainer_ref is not None:
             self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
-            if not self.trainwrap.is_spawned(): self.trainwrap.spawn()
-            self.trainer_config=self.get_updated_sub_config(self.trainwrap.get_config())
+            self.update_config(dict(trainer_config=self.trainwrap.get_config()), overwrite_if_conflict=False)
 
         pipeline_ref = pipeline_ref or getattr(self, 'pipeline_config', None)
         if pipeline_ref is not None:
             self.pipeline=ExtractionPipeline.from_ref(pipeline_ref)
-            if not self.pipeline.is_spawned(): self.pipeline.spawn()
-            self.pipeline_config=self.get_updated_sub_config(self.pipeline.get_config())
+            self.update_config(dict(pipeline_config=self.pipeline.get_config()), overwrite_if_conflict=False)
 
-    def get_updated_sub_config(self, sub_config):
 
-            ignore_keys=['type', 'id', 'name', 'path', 'parent_dir_path', 'parent_lab_path','timestamp_init']
-
-            self_config=self.get_config()
-            self_config={k:v for k,v in self_config.items() if k not in ignore_keys}
-
-            sub_keys=sub_config.keys()
-            self_config={k:v for k,v in self_config.items() if k  in sub_keys}
-
-            for key in sub_keys:
-                if key in ignore_keys: continue
-                if hasattr(self, key): self.__delattr__(key)
-
-            updated_sub_config=update_nested_dict(sub_config,self_config, overwrite=True)
-
-            return updated_sub_config
 
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")
@@ -226,6 +219,15 @@ class ExtractionExperiment(BaseDirectory):
         self.timestamp_done=get_timestamp()
         set_config(self.get_config())
         return
+    
+    def spawn(self):
+
+        if not self.modelwrap.is_spawned(): self.modelwrap.spawn()
+        if not self.dataset.is_spawned(): self.dataset.spawn()
+        if not self.trainwrap.is_spawned(): self.trainwrap.spawn()
+        if not self.pipeline.is_spawned(): self.pipeline.spawn()
+
+        super().spawn()
 
     def get_evals_df(self):
 
@@ -240,6 +242,8 @@ class ExtractionExperiment(BaseDirectory):
 
         evals_df.reset_index(drop=True, inplace=True)
         return evals_df
+
+
 
 
 
