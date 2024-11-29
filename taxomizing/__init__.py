@@ -82,7 +82,6 @@ class TaxomizingPipeline(BaseDirectory):
 
         return nodes_df
 
-
 class ScipyTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
@@ -111,6 +110,9 @@ class ScipyTaxomizingPipeline(TaxomizingPipeline):
         self.update_config(self._default_config, overwrite_if_conflict=False)
 
 
+from scipy.spatial.distance import squareform
+from sklearn.metrics.pairwise import cosine_distances
+
 class LinkageTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
@@ -119,15 +121,60 @@ class LinkageTaxomizingPipeline(TaxomizingPipeline):
         self._config_keys_to_exclude.extend([])
 
         self._default_config=dict(
+            linkage_args=dict(
+                method='average',
+                metric='cosine',
+                optimal_ordering=False
+            ),
 
         )
         self.update_config(self._default_config, overwrite_if_conflict=False)
+
+    
+    def get_linkage_matrix(self, chunks_df):
+
+        distance_matrix = cosine_distances(np.vstack(chunks_df['emb'].values))
+        distance_matrix = distance_matrix.astype(np.float64)
+        distance_matrix = squareform(distance_matrix, checks=False)
+
+        linkage_matrix = linkage(distance_matrix, **self.linkage_args)
+
+        return linkage_matrix
+    
+    def get_flattened_tree(self, linkage_matrix=None, chunks_df=None, plot=False):
+
+        linkage_matrix = self.get_linkage_matrix(chunks_df)
+
+        tree=linkage_to_btree(linkage_matrix, chunks_df)
+        self.logger.info( f"binary tree: {get_tree_info_dict(tree)}")
+
+        # vertical flattening
+        threshold_dist, index = get_dist_kneepoint(tree,  include_leaves=False, plot=plot)
+        #threshold_dist, index = get_dist_std(tree, std_factor=1.0, include_leaves=False, plot=plot)
+
+        tree=do_dist_flattening(tree, threshold_dist=threshold_dist)
+        self.logger.info( f"dist  tree: {get_tree_info_dict(tree)}")
+
+        #horizontal flattening
+        add_ddist(tree)
+
+        threshold_ddist, index = get_ddist_kneepoint(tree, include_leaves=False, plot=plot)
+        #threshold_ddist, index = get_ddist_std(tree, std_factor=1.0, include_leaves=False, plot=plot)
+        tree=do_ddist_flattening(tree, threshold_ddist=threshold_ddist)
+        self.logger.info( f"ddist tree: {get_tree_info_dict(tree)}")
+
+        return tree
+    
+
+    
+
+
+
+
+
+
     
     
-
-
-
-
 class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
