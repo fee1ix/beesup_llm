@@ -51,9 +51,6 @@ def get_prompt_messages(report_passage, use_extraction_prompt=True, use_few_shot
 
     return prompt_messages
 
-
-
-
 def pydantic_parse(completion,exclude_none=True):
 
     is_valid=False
@@ -120,6 +117,8 @@ def tabelize_json(base_json, create_meta_row=True):
 
     meta_row={k.replace('meta_',''):v for k,v in base_json.items() if k != "observations"}
     meta_emty=all([val==None for val in meta_row.values()])
+
+    print(base_json)
 
     obs_rows=base_json["observations"]
     obs_emty=(obs_rows==None)
