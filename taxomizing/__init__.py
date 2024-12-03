@@ -82,33 +82,6 @@ class TaxomizingPipeline(BaseDirectory):
 
         return nodes_df
 
-class ScipyTaxomizingPipeline(TaxomizingPipeline):
-    def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
-        super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
-
-
-        self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend([])
-
-        self._default_config=dict(
-            cluster_config=dict(
-                min_cluster_size=60, #5
-                max_cluster_size=0, #0
-                min_samples=None, #None
-                p=2, #2
-                alpha=1.0, #1.0
-                leaf_size=40, #40
-                cluster_selection_epsilon=0.1, #0.0
-                cluster_selection_method="eom", #eom, leaf
-                allow_single_cluster=False, #False
-                metric='precomputed',
-                approx_min_span_tree=True, #True
-                gen_min_span_tree=False, #False
-                cluster_selection_epsilon_max=float('inf'), #float('inf')
-            )
-        )
-        self.update_config(self._default_config, overwrite_if_conflict=False)
-
 
 from scipy.spatial.distance import squareform
 from sklearn.metrics.pairwise import cosine_distances
@@ -130,7 +103,6 @@ class LinkageTaxomizingPipeline(TaxomizingPipeline):
         )
         self.update_config(self._default_config, overwrite_if_conflict=False)
 
-    
     def get_linkage_matrix(self, chunks_df):
 
         distance_matrix = cosine_distances(np.vstack(chunks_df['emb'].values))
@@ -166,15 +138,37 @@ class LinkageTaxomizingPipeline(TaxomizingPipeline):
         return tree
     
 
-    
 
 
 
+class ScipyTaxomizingPipeline(TaxomizingPipeline):
+    def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
+        super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
 
 
+        self._config_key_order.extend([])
+        self._config_keys_to_exclude.extend([])
 
-    
-    
+        self._default_config=dict(
+            cluster_config=dict(
+                min_cluster_size=60, #5
+                max_cluster_size=0, #0
+                min_samples=None, #None
+                p=2, #2
+                alpha=1.0, #1.0
+                leaf_size=40, #40
+                cluster_selection_epsilon=0.1, #0.0
+                cluster_selection_method="eom", #eom, leaf
+                allow_single_cluster=False, #False
+                metric='precomputed',
+                approx_min_span_tree=True, #True
+                gen_min_span_tree=False, #False
+                cluster_selection_epsilon_max=float('inf'), #float('inf')
+            )
+        )
+        self.update_config(self._default_config, overwrite_if_conflict=False)
+
+
 class HDBScanTaxomizingPipeline(TaxomizingPipeline):
     def __init__(self, ref=None, dataset_ref=None, emb_model_ref=None, gen_model_ref=None, **kwargs):
         super().__init__(ref, dataset_ref, emb_model_ref, gen_model_ref, **kwargs)
