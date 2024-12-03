@@ -45,10 +45,10 @@ class ExtractionSample(object):
         """
 
         the_json=getattr(self, f'{prefix}_json')
-        the_df=tabelize_json(the_json,create_meta_row=create_meta_row) # create_meta_row=False determines if meta attributes are backpropagated to the individual observations
+        the_df=tabelize_json(the_json,create_meta_row=create_meta_row) # create_meta_row=False means that meta attributes are backpropagated to the individual observations
 
         the_df.attrs['is_empty']=getattr(self, f'{prefix}_is_empty')
-        the_df.attrs['is_valid']=getattr(self, f'{prefix}_is_valid')
+        the_df.attrs['is_valid']=getattr(self, f'{prefix}_is_valid') 
         
         if create_meta_row==True: setattr(self,f'raw_{prefix}_df',the_df)
         else: setattr(self,f'{prefix}_df',the_df)
