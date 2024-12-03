@@ -3,6 +3,7 @@ import json
 import copy
 import pandas as pd
 from pydantic import ValidationError
+
 from beesup_llm.extraction import \
     ExtractionScheme4SingleObservation, \
     ExtractionScheme4MultipeObservations, \
@@ -70,8 +71,19 @@ def pydantic_parse(completion,exclude_none=True):
 
     try:
         completion_json=ExtractionScheme4MultipeObservations.parse_raw(completion).dict(exclude_none=exclude_none)
-        is_valid=True
-        is_empty=all([val==None for val in completion_json.values()])
+
+        scientific_name_in_meta = ('meta_scientific_name' in completion_json)
+
+        scientific_name_in_obs = False
+        if 'observations' in completion_json:
+            # if not isinstance(completion_json['observations'],list):
+            #     completion_json['observations']
+
+            if isinstance(completion_json['observations'],list):
+                scientific_name_in_obs = all(['scientific_name' in obs.keys() for obs in completion_json['observations']])
+
+        is_valid = scientific_name_in_meta or scientific_name_in_obs
+        is_empty = all([val==None for val in completion_json.values()])
 
         return completion_json, is_valid, is_empty
     
@@ -108,17 +120,91 @@ def integrate_metas(base_json,allow_extra_keys=False):
 
     return obs_rows
 
+def recursive_remove_none(dictionary):
+    keys_to_remove = [key for key, val in dictionary.items() if val is None]
+    for key in keys_to_remove:
+        del dictionary[key]
+    
+    for key, val in list(dictionary.items()):  # Use list to avoid dictionary changed size during iteration error
+        if isinstance(val, dict):
+            recursive_remove_none(val)
+
+def isna(v):
+    if isinstance(v,list):
+        return all(pd.isna(v))
+    else:
+        return pd.isna(v)
+
+def stringify_json(old_json):
+    new_json=dict()
+    for k,v in old_json.items():
+        if not isna(v):
+            new_json[k]=str(v)
+        else:
+            new_json[k]=None
+    return new_json
+
+def stringify_extraction_json(old_json):
+    
+    new_json=dict()
+    if "observations" in old_json:
+        observations=[stringify_json(o) for o in old_json['observations']]
+    else:
+        observations=None
+
+    new_json=stringify_json(old_json)
+    new_json['observations']=observations
+
+    return new_json
+
+def normalize_json(old_json,ordered_keys):
+    new_json=dict()
+
+    for key in ordered_keys:
+        if key in old_json:
+            new_json[key]=old_json[key]
+        else:
+            new_json[key]=None
+    return new_json
+
+def normalize_extraction_json(old_json):
+
+    new_json=dict()
+
+    #if "observations" in old_json:
+    if isinstance(old_json.get('observations',None),list):
+        observations=[normalize_json(o,ExtractionScheme4SingleObservation.model_fields.keys()) for o in old_json['observations']]
+    else:
+        observations=None
+
+    new_json=normalize_json(old_json,ExtractionScheme4MultipeObservations.model_fields.keys())
+    new_json['observations']=observations
+
+    return new_json
+
+def denormalize_json(old_json):
+    return {k:v for k,v in old_json.items() if v!=None}
+
+def denormalize_extraction_json(old_json):
+    if isinstance(old_json['observations'],list):
+        old_json['observations']=[denormalize_json(o) for o in old_json['observations']]
+    
+    old_json=denormalize_json(old_json)
+    return old_json
+
+
+
 def tabelize_json(base_json, create_meta_row=True):
 
     if not isinstance(base_json,dict):
         return pd.DataFrame(columns=ExtractionScheme4SingleObservation.model_fields.keys())
-
+    
+    base_json=normalize_extraction_json(base_json)
     base_json=copy.deepcopy(base_json)
-
     meta_row={k.replace('meta_',''):v for k,v in base_json.items() if k != "observations"}
     meta_emty=all([val==None for val in meta_row.values()])
 
-    print(base_json)
+    #print(base_json)
 
     obs_rows=base_json["observations"]
     obs_emty=(obs_rows==None)
@@ -153,8 +239,6 @@ def tabelize_json(base_json, create_meta_row=True):
     table_df.attrs['has_meta_row']=create_meta_row
 
     return table_df
-
-
 
 
 def parse_completion(completion,verbose=False):
