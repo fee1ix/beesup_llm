@@ -315,6 +315,7 @@ def do_dist_flattening(tree, threshold_dist=None):
     
     return tree
 
+
 # ddist flattening --> horizontal!!
 def get_ddist_kneepoint(tree, include_leaves=True, plot=False):
 
