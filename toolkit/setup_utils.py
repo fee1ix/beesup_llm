@@ -2,6 +2,7 @@ import re
 import os
 import yaml
 import copy
+import logging
 
 from .system import *
 from .dict_utils import *
@@ -23,12 +24,12 @@ def load_dict(ref):
     else: return None
         #raise ValueError("Input must be a dictionary or a string path.")
 
-def get_ids(parent_path=None, type='', from_id=0, to_id=10e9):
+def get_ids(path=None, type='', from_id=0, to_id=10e9):
     id_pattern=r'^(\d{4,5})_'+type
 
-    if not os.path.exists(f'{parent_path}'): return []
+    if not os.path.exists(f'{path}'): return []
 
-    fns=os.listdir(parent_path)
+    fns=os.listdir(path)
     fns=[fn for fn in fns if bool(re.match(id_pattern,fn))]
     ids=[int(re.findall(id_pattern,fn)[0]) for fn in fns]
     ids=[id for id in ids if (id >=from_id) and (id <=to_id)]
@@ -46,8 +47,17 @@ def save_yaml(the_yaml, path):
     with open(path, 'w') as file:
         yaml.dump(the_yaml, file, sort_keys=False, default_flow_style=False)
 
-def set_config(config):
-    save_yaml(config, f'{config["path"]}/config.yaml')
+def set_config(config,path=None):
+
+    if not path:
+        lab_name=config['lab_name']
+        abs_path = get_path_until(lab_name,include_dir=False)
+        path = f"{abs_path}/{config['rel_path']}"
+    
+    elif not path.endswith('config.yaml'):
+        path = f"{path}/config.yaml"
+
+    save_yaml(config, path)
 
 def extract_lab_path(path):
 
@@ -63,25 +73,37 @@ def extract_lab_path(path):
     # If no directory ending with '_lab' was found
     raise FileNotFoundError("No directory ending with '_lab' found in the path.")
 
-def extract_type_from_path(path):
-    match = re.search(r"/(\w+)s/\d+_\1\b", path)
-    if match:
-        return match.group(1)
-    else:
-        return None
+from pathlib import Path
+def get_lab_name(path=None):
+    if not path: path = os.getcwd()
 
-def extract_type(input_obj):
+    lab_names=[p for p in list(Path(path).parts) if p.endswith('_lab')]
+    if len(lab_names)==0: raise ValueError('No lab name found in path')
+    if len(lab_names)>1: warnings.warn('Multiple lab names found in path. Using last one.')
+    return lab_names[-1]
 
-    the_type=None
+def get_path_until(dir_name, path=None, include_dir=False):
+    if not path: path = os.getcwd()
 
-    if isinstance(input_obj, str):
-        the_type=extract_type_from_path(input_obj)
+    path = Path(path)
+    parts = []
+    for part in path.parts:
+        if part == dir_name:
+            if include_dir: parts.append(part)
+            break
+        parts.append(part)
+    
+    if dir_name not in path.parts:
+        raise ValueError(f"Directory '{dir_name}' not found in the path.")
+    
+    return str(Path(*parts))
 
-    elif hasattr_or_key(input_obj,'type'):
-        the_type=getattr_or_key(input_obj,'type')
+def get_lab_path(lab_name=None):
 
+    if not lab_name: lab_name = get_lab_name()
+    abs_path = get_path_until(lab_name,include_dir=False)
 
-    return the_type
+    return f"{abs_path}/{lab_name}"
 
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
@@ -227,10 +249,15 @@ def is_valid_config(config):
 
 def get_config_from_id(id, type=None):
 
-    parent_lab_path = extract_lab_path(os.getcwd())
-    parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
-    assert os.path.exists(f'{parent_dir_path}'), f"parent directory {parent_dir_path} does not exist"
-    config_dict = load_dict(f"{parent_dir_path}/{str(id).zfill(4)}_{type}/config.yaml")
+    lab_name = get_lab_name(os.getcwd())
+    dir_name = f'{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+
+    abs_path = get_path_until(lab_name,include_dir=False)
+    abs_path+=f"{lab_name}/{dir_name}"
+
+    assert os.path.exists(abs_path), f"{abs_path} does not exist"
+    config_dict = load_dict(f"{abs_path}/{str(id).zfill(4)}_{type}/config.yaml")
+
     return config_dict
 
 def get_config_from_path(path):
@@ -259,23 +286,23 @@ def get_config_from_obj(obj):
 
 def get_config_from_type(type=None):
 
-    parent_lab_path = extract_lab_path(os.getcwd())
-    parent_dir_path = f'{parent_lab_path}/{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+    lab_name = get_lab_name(os.getcwd())
+    dir_name = f'{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
+    dir_path = f"{get_path_until(lab_name, include_dir=False)}/{lab_name}/{dir_name}"
 
-    # if not os.path.exists(f'{parent_dir_path}'):
-    #     os.makedirs(f'{parent_dir_path}', exist_ok=False)
+    id = get_max_id(dir_path) + 1
 
-    id = get_max_id(parent_dir_path) + 1
     name = f"{str(id).zfill(4)}_{type}"
+    rel_path=f"{lab_name}/{dir_name}/{name}"
 
     return dict(
         type=type,
         id=id,
         name=name,
-        path=f"{parent_dir_path}/{name}",
+        rel_path=rel_path,
+        lab_name=lab_name,
+        dir_name=dir_name,
         timestamp_init=get_timestamp(),
-        parent_lab_path=parent_lab_path,
-        parent_dir_path=parent_dir_path
     )
 
 def get_config_from_model(model,**kwargs):
