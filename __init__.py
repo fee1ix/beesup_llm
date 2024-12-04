@@ -83,13 +83,19 @@ class BaseDirectory(object):
     type = 'directory'
     logger = logging.getLogger(__name__)
 
-
     @classmethod
     def get_dir_path(cls):
-        parent_lab_path = extract_lab_path(os.getcwd())
-        return f'{parent_lab_path}/{cls.type}s'
 
+        lab_path=get_lab_path()
+        dir_path=f"{lab_path}/{cls.type}s"
 
+        return dir_path
+    
+    @classmethod
+    def get_max_id(cls):
+        dir_path=cls.get_dir_path()
+        return get_max_id(dir_path)
+    
     @classmethod
     def get_overview(cls, keypaths=[]):
 
@@ -130,9 +136,9 @@ class BaseDirectory(object):
             type=self.type,
             id=None,
             name=None,
-            path=None,
-            parent_dir_path=None,
-            parent_lab_path=None,
+            dir_name=None,
+            lab_name=None,
+            rel_path=None,
             timestamp_init=get_timestamp(),
         )
         self._config_key_order=list(self._default_config.keys())
@@ -151,13 +157,16 @@ class BaseDirectory(object):
             )
         
         self.logger.debug(f"init_kwargs: {init_kwargs}")
-
         config_dict=get_config_from_ref(ref,**init_kwargs)
         self.update_config(config_dict, overwrite_if_conflict=True)
 
+        #_paths only for internal use to allow use on different machines
+        self._lab_path=get_lab_path(self.lab_name)
+        self._dir_path=self.get_dir_path()
+        self._path=f"{self._dir_path}/{self.name}"
+
         self.logger.info(f"{self.name.upper()} initialised")
 
-    
     def update_config(self, mixin_dict, overwrite_if_conflict=True, interpret_none_as_val=True):
         
         #self.logger.debug(f"mixin_dict: {mixin_dict}")
@@ -218,34 +227,25 @@ class BaseDirectory(object):
         self.logger.debug(f"updated_config: {base_config}")
         return base_config
     
-
-
-
-
     def spawn_config(self):
 
-        if not os.path.exists(f'{self.parent_dir_path}'):
-            os.makedirs(f'{self.parent_dir_path}', exist_ok=False)
+        if not os.path.exists(f'{self._dir_path}'):
+            os.makedirs(f'{self._dir_path}', exist_ok=False)
 
         
-        if os.path.exists(f'{self.path}/config.yaml'):
-            old_config = load_dict(f'{self.path}/config.yaml')
+        if os.path.exists(f'{self._path}/config.yaml'):
+            old_config = load_dict(f'{self._path}/config.yaml')
 
             if old_config != self.get_config():
                 warnings.warn(f"Already existing. Spawn as new instance.")
                 self.reinit_config()
 
 
-        if not os.path.exists(f'{self.path}'):
-            os.makedirs(f'{self.path}', exist_ok=False)
+        if not os.path.exists(f'{self._path}'):
+            os.makedirs(f'{self._path}', exist_ok=False)
 
-        set_config(self.get_config())
-        self.logger.info(f"{self.name.upper()} config spawned at {self.path}")
-
-    def set_default_config(self):
-        if not hasattr(self, '_default_config'): self._default_config=dict()
-        self.update_config(self._default_config, overwrite_if_conflict=False)
-
+        set_config(self.get_config(), path=self._path)
+        self.logger.info(f"{self.name.upper()} config spawned at {self.rel_path}")
 
     def update_config_smart(self, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True, allow_new_atomic_keys=False, allow_new_nested_keys=False):
 
@@ -261,11 +261,6 @@ class BaseDirectory(object):
         for k, v in updated_config_dict.items(): setattr(self, k, v)
         return
 
-
-    def get_max_id(self):
-        assert hasattr(self, 'parent_dir_path'), "parent_dir_path must be defined"
-        return get_max_id(self.parent_dir_path)
-    
     def is_spawned(self):
         return os.path.exists(f'{self.path}')
 
