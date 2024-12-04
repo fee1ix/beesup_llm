@@ -11,7 +11,6 @@ dependencies:
   - tqdm
   - pytorch-cpu
   - torchvision
-  - torchaudio
   - transformers
   - datasets
   - langchain
@@ -33,3 +32,4 @@ dependencies:
       - bitsandbytes
       - tensorboard
       - unstructured
+      - torchaudio
