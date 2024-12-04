@@ -1,0 +1,35 @@
+name: beesup
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - tqdm
+  - pytorch-cpu
+  - torchvision
+  - torchaudio
+  - transformers
+  - datasets
+  - langchain
+  - spacy
+  - sentencepiece
+  - pip
+  - pip:
+      - accelerate
+      - anytree
+      - rich
+      - seaborn
+      - fastapi
+      - uvicorn
+      - huggingface-hub
+      - nltk
+      - jsonpath-python
+      - pydantic
+      - peft
+      - bitsandbytes
+      - tensorboard
+      - unstructured
