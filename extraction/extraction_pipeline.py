@@ -3,11 +3,13 @@ from beesup_llm import *
 from ..toolkit.setup_utils import *
 from ..toolkit.llm_utils import *
 
-
-from beesup_llm.model import *
-from beesup_llm.dataset import *
-
 from .extraction_utils import *
+
+
+from beesup_llm.dataset import *
+#from beesup_llm.model import *
+from beesup_llm.model_pipelines import *
+
 
 from datasets import Dataset
 
@@ -55,7 +57,6 @@ class ExtractionSample(object):
 
         return 
     
-
 class ExtractionPipeline(BaseDirectory):
     type='extraction_pipeline'
 
@@ -68,31 +69,46 @@ class ExtractionPipeline(BaseDirectory):
         
         return cls(ref=pre_config, **kwargs)
 
-    def __init__(self, ref=None, model_ref=None, **kwargs):
+    def __init__(self, ref=None, llm_ref=None, **kwargs):
 
         super().__init__(ref, **kwargs)
 
         self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['modelwrap'])
+        self._config_keys_to_exclude.extend(['llm_pipe'])
 
         self._default_config=dict(
             use_extraction_prompt=True,
-            use_few_shots=True
+            use_few_shots=True,
+
+            llm_config=dict(
+                model_name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct',
+                generation_config=dict(
+                    max_new_tokens=4000,
+                    #max_time=600,
+                    stop_strings=['}\n```'],
+                )
+            )
         )
+
+
         self.update_config(self._default_config, overwrite_if_conflict=False)
-
-        # if dataset_ref is not None:
-        #     if isinstance(dataset_ref, pd.DataFrame):
-        #         self.df=dataset_ref
-
-        #     else:
-        #         dataset=BaseDataset(dataset_ref)
-        #         self.dataset_config=dataset.get_config()
-        #         self.df=dataset.dataset_df
-
-        if model_ref is not None:
-            self.modelwrap=GenModelWrap.from_ref(model_ref)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
     
+
+        llm_ref = llm_ref or getattr(self, 'llm_config', None)
+        if llm_ref is not None:
+            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+            #self.llm_pipe.update_config(self.get_config()['llm_config'])
+            #self.llm_pipe.update_config(self.get_config())
+            self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
+            
+
     def get_prompting_config(self, **kwargs):
 
         prompting_config=dict(
@@ -110,12 +126,13 @@ class ExtractionPipeline(BaseDirectory):
         sample.parse_df()
         return sample.pred_df
 
-    def get_pred(self, report_passage, modelwrap, **kwargs):
+    def get_pred(self, report_passage, llm_pipe, **kwargs):
 
+        llm_pipe.prepare_inference()
         prompt_messages=get_prompt_messages(report_passage, **self.get_prompting_config(**kwargs))
 
         pred_completion=''
-        for new_token in modelwrap.generation_stream(prompt_messages):
+        for new_token in llm_pipe.get_pipeline_stream(prompt_messages, **kwargs):
             pred_completion+=new_token
             print(new_token, end='', flush=True)
         
@@ -159,37 +176,53 @@ class ExtractionPipeline(BaseDirectory):
         
         return df
 
-    def get_pred_df(self, df, modelwrap, **kwargs):
+    def get_pred_df(self, df, llm_pipe, **kwargs):
 
-        df=self.prepare_df_for_completion(df, **kwargs)
-        ds=self.get_ds_for_completion(df, tokenizer=modelwrap.get_inference_tokenizer(), **kwargs)
+        df = self.prepare_df_for_completion(df, **kwargs)
+        #ds=self.get_ds_for_completion(df, tokenizer=llm_pipe.get_inference_tokenizer(), **kwargs)
 
-        generation_outputs=modelwrap.generation_loop(ds,**kwargs)
-        self._generation_outputs=generation_outputs
-        generation_df=to_outputs_df(generation_outputs,tokenizer=modelwrap.get_inference_tokenizer())
-        self._generation_df=generation_df
+        llm_pipe.prepare_inference()
 
-        df['pred_completion']=generation_df['pred_completion'].values
+        df = llm_pipe.get_pred_df(df, **kwargs)
+        df = self.get_pred_df_parse_only(df)
 
-        return self.get_pred_df_parse_only(df)
+        # generation_outputs=llm_pipe.generation_loop(ds,**kwargs)
+        # self._generation_outputs=generation_outputs
+
+        # generation_df=to_outputs_df(generation_outputs,tokenizer=llm_pipe.get_inference_tokenizer())
+        # self._generation_df=generation_df
+        # df['pred_completion']=generation_df['pred_completion'].values
+
+        return df
 
     
-    def __call__(self, the_input, model_ref=None, **kwargs):
+    def __call__(self, the_input, llm_ref=None, **kwargs):
 
-        if model_ref is not None:
-            modelwrap=GenModelWrap.from_ref(model_ref)
-        elif hasattr(self, 'modelwrap'): modelwrap=self.modelwrap
+        if llm_ref is not None:
+            llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
 
-        if isinstance(the_input, str):
-            return self.get_pred(the_input, modelwrap, **kwargs)
+        elif hasattr(self, 'llm_pipe'): llm_pipe=self.llm_pipe
+
+        generation_config=llm_pipe.get_config()['generation_config']
+        generation_config=update_dict(generation_config, self.llm_config['generation_config'], interpret_none_as_val=True, overwrite_if_conflict=True)
+        generation_config=update_dict_smart(
+            generation_config, 
+            kwargs, 
+            interpret_none_as_val=True,
+            overwrite_if_conflict=True,
+            allow_new_atomic_keys=False,
+            allow_new_nested_keys=False
+            )
         
-        elif isinstance(the_input, pd.DataFrame):
-            return self.get_pred_df(the_input, modelwrap, **kwargs)
+        if isinstance(the_input, str): #input is a single report passage
+            return self.get_pred(the_input, llm_pipe, generation_config=generation_config, **kwargs)
         
+        elif isinstance(the_input, pd.DataFrame): #input is a dataframe containing a column 'report_passage'
+            return self.get_pred_df(the_input, llm_pipe, generation_config=generation_config, **kwargs)
+
         elif isinstance(the_input, Dataset):
             self.logger.info("Dataset input detected")
 
-        
         return
 
 

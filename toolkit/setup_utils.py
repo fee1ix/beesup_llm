@@ -98,12 +98,31 @@ def get_path_until(dir_name, path=None, include_dir=False):
     
     return str(Path(*parts))
 
+
 def get_lab_path(lab_name=None):
 
-    if not lab_name: lab_name = get_lab_name()
-    abs_path = get_path_until(lab_name,include_dir=False)
+    current_lab_name = get_lab_name()
+    current_lab_path = get_path_until(current_lab_name, include_dir=True)
 
-    return f"{abs_path}/{lab_name}"
+    if (lab_name is None) or (lab_name == current_lab_name):
+        return current_lab_path
+    
+    else: #now that we know the current lab path, we can search one level up for the target lab
+        labs_path = os.path.dirname(current_lab_path)
+        lab_names = [fn for fn in os.listdir(labs_path) if fn.endswith('_lab')]
+
+        if lab_name not in lab_names:
+            raise ValueError(f"Lab '{lab_name}' not found in '{labs_path}'")
+        
+        return f"{labs_path}/{lab_name}"
+
+
+# def get_lab_path(lab_name=None):
+
+#     if not lab_name: lab_name = get_lab_name()
+#     abs_path = get_path_until(lab_name,include_dir=False)
+
+#     return f"{abs_path}/{lab_name}"
 
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
@@ -241,22 +260,32 @@ def get_value_from_keypath(the_dict, keypath):
 def is_valid_config(config):
     if getattr_or_key(config, 'type') is None: return False
     if getattr_or_key(config, 'id') is None: return False
-    if getattr_or_key(config, 'path') is None: return False
     if getattr_or_key(config, 'name') is None: return False
-    if getattr_or_key(config, 'timestamp_init') is None: return False
+    if getattr_or_key(config, 'dir_name') is None: return False
+    if getattr_or_key(config, 'lab_name') is None: return False
+    #if getattr_or_key(config, 'timestamp_init') is None: return False
 
     return True
 
-def get_config_from_id(id, type=None):
+def get_config_from_id(id, **kwargs):
 
-    lab_name = get_lab_name(os.getcwd())
+    type=kwargs.get('type',None)
+    lab_name=kwargs.get('lab_name',None)
+
+    if not lab_name:
+        lab_name = get_lab_name(os.getcwd())
+    
+    logging.debug(f"type: {type}, lab_name: {lab_name}")
+
     dir_name = f'{type}s'  # derive the parent directory path from the type (e.g. dataset -> datasets)
 
-    abs_path = get_path_until(lab_name,include_dir=False)
-    abs_path+=f"{lab_name}/{dir_name}"
+    lab_path = get_lab_path(lab_name)
+    dir_path = f"{lab_path}/{dir_name}"
 
-    assert os.path.exists(abs_path), f"{abs_path} does not exist"
-    config_dict = load_dict(f"{abs_path}/{str(id).zfill(4)}_{type}/config.yaml")
+    #abs_path = f"{get_path_until(lab_name,include_dir=False)}/{lab_name}/{dir_name}"
+
+    assert os.path.exists(dir_path), f"{dir_path} does not exist"
+    config_dict = load_dict(f"{dir_path}/{str(id).zfill(4)}_{type}/config.yaml")
 
     return config_dict
 
@@ -269,14 +298,33 @@ def get_config_from_path(path):
 
 def get_config_from_dict(the_dict):
 
+    logging.debug(f"the_dict: {the_dict}")
+
     if not is_valid_config(the_dict):
 
-        if the_dict.get('path', None): return get_config_from_path(the_dict['path'])
-        if the_dict.get('id', None) and the_dict.get('type',None): return get_config_from_id(the_dict['id'], the_dict['type'])
-        if the_dict.get('type', None): return get_config_from_type(the_dict['type'])
+        if the_dict.get('name', None) is not None:
+            the_dict['id'] = int(the_dict['name'][:4])
+
+        if all([bool(the_dict.get(k, None)) for k in ['type','id']]):
+            return get_config_from_id(**the_dict)
+        
+        if all([bool(the_dict.get(k, None)) for k in ['type']]):
+            return get_config_from_type(the_dict['type'])
+        
+
+        # if all([k in the_dict for k in ['type','id']]):
+        #     return get_config_from_id(**the_dict)
+
+        #if all([k in the_dict for k in ['type','name']]):
+
+
+        # if the_dict.get('type', None): return get_config_from_path(the_dict['path'])
+        # if the_dict.get('id', None) and the_dict.get('type',None): return get_config_from_id(the_dict['id'], the_dict['type'])
+        # if the_dict.get('type', None): return get_config_from_type(the_dict['type'])
         else : 
-            logging.info(f"Invalid config dictionary: {the_dict}")
-            raise ValueError("Invalid config dictionary.")
+            return the_dict
+            # logging.info(f"Invalid config dictionary: {the_dict}")
+            # raise ValueError("Invalid config dictionary.")
 
     return the_dict
 
@@ -307,7 +355,7 @@ def get_config_from_type(type=None):
 
 def get_config_from_model(model,**kwargs):
 
-    config_dict=get_config_from_type(**kwargs)
+    config_dict=get_config_from_type(kwargs.get('type'))
     config_dict.update(
         name_or_path=getattr_or_key(model, 'name_or_path'),
         model=model
@@ -325,13 +373,17 @@ def get_config_from_ref(ref, **kwargs):
         return get_config_from_type(type=kwargs['type'])
     
     if isinstance(ref, int):
-        return get_config_from_id(ref, type=kwargs['type'])
+        kwargs.pop('id',None)
+        logging.debug(f"kwargs: {kwargs}")
+        return get_config_from_id(ref, **kwargs)
     
     elif isinstance(ref, str):
         return get_config_from_path(ref)
     
     elif isinstance(ref, dict):
-        ref.update(kwargs)
+        logging.debug(f"kwargs: {kwargs}")
+        ref=update_dict(ref, kwargs, overwrite_if_conflict=False)
+        #ref.update(kwargs)
         return get_config_from_dict(ref)
     
     elif hasattr(ref, 'get_config'):

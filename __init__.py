@@ -19,63 +19,6 @@ from typing import Optional
 
 import pandas as pd
 
-
-
-class Lab(object):
-
-    def __init__(self, path=None):
-
-        if path is None:
-            self.deduce_from_cwd()
-
-    
-    def deduce_from_cwd(self):
-
-        # Start from the current working directory
-        current_path = os.getcwd()
-
-        # Traverse upwards to find the first directory that ends with '_lab'
-        while current_path != os.path.dirname(current_path):  # Loop until root directory is reached
-            dir_name = os.path.basename(current_path)
-            if dir_name.endswith('_lab'):
-                self.name = dir_name
-                self.path = current_path
-                return  # Stop once the first matching directory is found
-
-            # Move up one directory level
-            current_path = os.path.dirname(current_path)
-
-        # If no directory ending with '_lab' was found
-        raise FileNotFoundError("No directory ending with '_lab' found in the current or parent directories.")
-
-    
-    def __repr__(self):
-
-        total_size = 0
-        file_count = 0
-        dir_count = 0
-        
-        for root, dirs, files in os.walk(self.path):
-            # Increment the directory count
-            dir_count += len(dirs)
-            
-            # Increment file count and total size
-            for file in files:
-                file_count += 1
-                file_path = os.path.join(root, file)
-                total_size += os.path.getsize(file_path)
-        
-        # Convert total size from bytes to a more readable format (MB)
-        total_size_mb = total_size / (1024 * 1024)
-
-        return f"""
-Lab-Path: {self.path}
-Total number of files: {file_count}
-Total number of subdirectories: {dir_count}
-Total size of files: {total_size_mb:.2f} MB
-        """.strip()
-
-
 class BaseDirectory(object):
     """
     Base class for all directories in the lab.
@@ -85,7 +28,6 @@ class BaseDirectory(object):
 
     @classmethod
     def get_dir_path(cls):
-
         lab_path=get_lab_path()
         dir_path=f"{lab_path}/{cls.type}s"
 
@@ -119,11 +61,15 @@ class BaseDirectory(object):
 
             for keypath in _keypaths:
 
-                #TODO: only set last key of keypath to overview dataframe
                 keypath_list=split_keypath(keypath)
                 value=get_value_from_keypath(config_dict, keypath_list)
 
-                if value is not None: overview_row[keypath_list[-1]]=value
+                if value is not None:
+
+                    if keypath_list[-1] not in overview_row.keys():
+                        overview_row[keypath_list[-1]]=value
+                    else:
+                        overview_row['.'.join(keypath_list)]=value
             
             overview_data.append(overview_row)
         
@@ -139,7 +85,7 @@ class BaseDirectory(object):
             dir_name=None,
             lab_name=None,
             rel_path=None,
-            timestamp_init=get_timestamp(),
+            #timestamp_init=get_timestamp(),
         )
         self._config_key_order=list(self._default_config.keys())
         self._config_keys_to_exclude=['logger','from_ref']
@@ -158,11 +104,13 @@ class BaseDirectory(object):
         
         self.logger.debug(f"init_kwargs: {init_kwargs}")
         config_dict=get_config_from_ref(ref,**init_kwargs)
+        self.logger.debug(f"config_dict: {config_dict}")
         self.update_config(config_dict, overwrite_if_conflict=True)
+
 
         #_paths only for internal use to allow use on different machines
         self._lab_path=get_lab_path(self.lab_name)
-        self._dir_path=self.get_dir_path()
+        self._dir_path=f"{self._lab_path}/{self.type}s"
         self._path=f"{self._dir_path}/{self.name}"
 
         self.logger.info(f"{self.name.upper()} initialised")
@@ -205,17 +153,22 @@ class BaseDirectory(object):
         for k, v in updated_config_dict.items(): setattr(self, k, v)
         return
         
-   
     def reinit_config(self):
         new_config=get_config_from_type(type=self.type)
         self.update_config(new_config, overwrite_if_conflict=True)
 
     def get_updated_config(self, kwargs, config_key='some_config'):
 
-        base_config=copy.deepcopy(getattr(self,config_key))
+        config_dict=self.get_config()
+
+        if hasattr(config_dict,config_key):
+            base_config=copy.deepcopy(config_dict[config_key])
+        else:
+            keypath=get_dict_keypath(config_dict,config_key)
+            base_config=copy.deepcopy(get_dict_value_from_keypath(keypath))
+        
 
         self.logger.debug(f"base_config: {base_config}")
-
         if config_key in kwargs: kwargs.update(kwargs.get(config_key))
 
         self.logger.debug(f"kwargs: {kwargs}")
@@ -232,7 +185,6 @@ class BaseDirectory(object):
         if not os.path.exists(f'{self._dir_path}'):
             os.makedirs(f'{self._dir_path}', exist_ok=False)
 
-        
         if os.path.exists(f'{self._path}/config.yaml'):
             old_config = load_dict(f'{self._path}/config.yaml')
 
@@ -247,32 +199,31 @@ class BaseDirectory(object):
         set_config(self.get_config(), path=self._path)
         self.logger.info(f"{self.name.upper()} config spawned at {self.rel_path}")
 
-    def update_config_smart(self, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True, allow_new_atomic_keys=False, allow_new_nested_keys=False):
-
-        updated_config_dict=update_dict_smart(
-            self.get_config(),
-            mixin_dict,
-            overwrite_if_conflict=overwrite_if_conflict,
-            interpret_none_as_val=interpret_none_as_val,
-            allow_new_atomic_keys=allow_new_atomic_keys,
-            allow_new_nested_keys=allow_new_nested_keys
-            )
-        
-        for k, v in updated_config_dict.items(): setattr(self, k, v)
-        return
-
     def is_spawned(self):
-        return os.path.exists(f'{self.path}')
+        return os.path.exists(f'{self._path}')
 
     def get_config(self):
 
-        config = {k: getattr(self, k) for k in self._config_key_order if hasattr(self, k)}
-        config.update({k: v for k, v in self.__dict__.items() if 
-                       (k not in self._config_keys_to_exclude) and
-                       (not k.startswith('_')) and
-                       #(not isinstance(v, (pd.DataFrame))) and
-                       #(isinstance(k,(str,int,float,dict,list,tuple))) and
-                       (k not in self._config_key_order)})
+        config=dict()
+        for key in self._config_key_order:
+            if key in config: continue
+            if hasattr(self, key): 
+                config[key]=getattr(self, key)
+
+        #config = {k: getattr(self, k) for k in self._config_key_order if hasattr(self, k)}
+
+        further_items=self.__dict__
+        further_items=filter_dict_valuetypes(further_items,valuetypes=[str,int,float,bool,dict,list,tuple])
+        further_items=filter_dict_keypatterns(further_items, [r'^_'], invert=True)
+
+        config.update(further_items)
+
+        # config.update({k: v for k, v in self.__dict__.items() if 
+        #                (k not in self._config_keys_to_exclude) and
+        #                (not k.startswith('_')) and
+        #                #(not isinstance(v, (pd.DataFrame))) and
+        #                #(isinstance(k,(str,int,float,dict,list,tuple))) and
+        #                (k not in self._config_key_order)})
 
         return config
 

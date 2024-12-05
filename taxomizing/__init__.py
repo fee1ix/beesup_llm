@@ -48,6 +48,7 @@ class TaxomizingPipeline(BaseDirectory):
         if gen_model_ref is not None:
             self.gen_model=GenModelWrap.from_ref(gen_model_ref)
 
+
     def get_linkage_matrix(self, df=None):
         
         if df is None: df = self.df
