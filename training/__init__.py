@@ -3,7 +3,8 @@ from ..toolkit.setup_utils import *
 from ..toolkit.llm_utils import *
 
 from beesup_llm.dataset import BaseDataset
-from beesup_llm.model import *
+#from beesup_llm.model import *
+from beesup_llm.model_pipelines import *
 import logging
 
 
@@ -37,16 +38,16 @@ class BaseTrainerWrap(BaseDirectory):
         
         return cls(ref=pre_config, **kwargs)
 
-    def __init__(self, ref=None, model_ref=None, dataset_ref=None, **kwargs):
-        super().__init__(ref,  model_ref=None, dataset_ref=None, **kwargs)
+    def __init__(self, ref=None, llm_ref=None, dataset_ref=None, **kwargs):
+        super().__init__(ref, **kwargs)
 
-        self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['modelwrap','model','dataset','trainer','model_config','model_ref','dataset_ref'])
         self._model_is_prepared=False
 
         self._default_config=dict(
             trainer_args=dict(
-                auto_find_batch_size=True,
+                #auto_find_batch_size=True,
+                auto_find_batch_size=False,
+                per_device_train_batch_size=4,
                 gradient_accumulation_steps=1,
                 gradient_checkpointing_kwargs=dict(
                     use_reentrant=False,
@@ -54,7 +55,7 @@ class BaseTrainerWrap(BaseDirectory):
                 warmup_steps=0,
                 num_train_epochs=12,
                 learning_rate=0.0002,
-                output_dir=f"{self.path}",
+                output_dir=f"{self._path}",
                 optim='paged_adamw_8bit',
                 per_device_eval_batch_size=16,
                 save_strategy='no',
@@ -71,22 +72,35 @@ class BaseTrainerWrap(BaseDirectory):
                 label_pad_token_id =-100,
             )
         )
+
+
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
+        self._config_keys_to_exclude.extend(['modelwrap','model','dataset','trainer','model_config','llm_ref','dataset_ref'])
+
         self.update_config(self._default_config, overwrite_if_conflict=False)
 
-        if model_ref is not None:
-            self.modelwrap=GenModelWrap.from_ref(model_ref)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
+
+
+        if llm_ref is not None:
+            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
 
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
 
     def get_model(self):
-        return getattr(self,'model',self.modelwrap.get_model())
+        return getattr(self,'model',self.llm_pipe.get_model())
 
     def get_tokenizer(self):
 
         if hasattr(self,'modelwrap'): 
-            return self.modelwrap.get_training_tokenizer()
+            return self.llm_pipe.get_training_tokenizer()
 
 
      
@@ -275,49 +289,9 @@ class LoraTrainerWrap(BaseTrainerWrap):
 
 
     def run(self, **kwargs):
-
         self.trainer.train()
         
 
-
-
-        
-
-
-    # def get_trainer(self, **kwargs):
-
-    #     model=kwargs.get('model', None)
-    #     if model is None:
-    #         model = self._modelwrap.get_model()
-    #         model = self.get_lora_model(model)
-
-
-    #     tokenizer = self._modelwrap.get_training_tokenizer()
-
-    #     train_ds, eval_ds, test_ds = self._dataset.arrange(tokenizer)
-
-        
-
-    #     trainer = SFTTrainer(
-    #         model=model,
-    #         train_dataset=train_ds,
-    #         eval_dataset=eval_ds,
-    #         peft_config=LoraConfig(**self.lora_config),
-    #         args=TrainingArguments(**self.args),  
-    #         data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer,model=model,**self.data_collator_config),
-    #         **self.sftt_args
-    #     )
-
-    #     trainer.evaluation_loop=types.MethodType(self.custom_evaluation_loop,trainer)
-
-    #     return trainer
-    
-
-
-
-
-
-    
 
 
     

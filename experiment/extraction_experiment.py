@@ -4,26 +4,28 @@ from beesup_llm.toolkit.setup_utils import *
 from beesup_llm.toolkit.llm_utils import *
 from beesup_llm.toolkit.system import *
 
-from beesup_llm.model import *
+#from beesup_llm.model import *
 from beesup_llm.dataset import BaseDataset
 from beesup_llm.training import *
+
+from beesup_llm.model_pipelines import *
 from beesup_llm.extraction.extraction_pipeline import *
 
 
 from transformers import TrainerCallback
-class EvaluationCallback(TrainerCallback):
+class PredictionCallback(TrainerCallback):
     def __init__(self, experiment):
         self.experiment = experiment
         pass
 
     def get_eval_df(self, model):
         eval_df=self.experiment.eval_df
-        eval_df=self.experiment.pipeline(eval_df, model_ref=model)
+        eval_df=self.experiment.extractor_pipe(eval_df, llm_ref=model)
         return eval_df
     
     def save_eval_df(self, eval_df, global_step):
-        eval_df.to_pickle(f"{self.experiment.path}/{str(global_step).zfill(4)}_eval_df.pkl")
-        self.experiment.logger.info(f"Saved eval_df to {self.experiment.path}/{str(global_step).zfill(4)}_eval_df.pkl")
+        eval_df.to_pickle(f"{self.experiment._path}/{str(global_step).zfill(4)}_eval_df.pkl")
+        self.experiment.logger.info(f"Saved eval_df to {self.experiment._path}/{str(global_step).zfill(4)}_eval_df.pkl")
 
     def on_epoch_end(self, args, state, control, **kwargs):
         model=kwargs['model']
@@ -69,8 +71,7 @@ class ExtractionExperiment(BaseDirectory):
 
         return multirun_df
 
-
-    def __init__(self, ref=None, dataset_ref=None, pipeline_ref=None, model_ref=None, trainer_ref=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, extractor_ref=None, llm_ref=None, trainer_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
@@ -78,7 +79,8 @@ class ExtractionExperiment(BaseDirectory):
             seed = 55,
             do_eval_base_model=True,
 
-            model_config=dict(
+            llm_config=dict(
+                #name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct',
                 generation_config=dict(
                     do_sample=False,
                 ),
@@ -90,7 +92,7 @@ class ExtractionExperiment(BaseDirectory):
             trainer_config=dict(
                 trainer_args=dict(
                     num_train_epochs=10,
-                    output_dir=f"{self.path}",
+                    output_dir=f"{self._path}",
                     save_strategy='no',
                     eval_strategy='no',
                     do_eval=False,
@@ -99,7 +101,7 @@ class ExtractionExperiment(BaseDirectory):
         )
 
         self._config_key_order.extend(list(self._default_config.keys()))
-        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','modelwrap','pipeline','dataset'])
+        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','llm_pipe','extractor_pipe','dataset'])
 
 
         self.logger.debug(f"ref: {ref}")
@@ -115,14 +117,15 @@ class ExtractionExperiment(BaseDirectory):
             allow_new_nested_keys=False
         )
 
-
         self.trainer_config['trainer_args']['seed']=self.seed
 
-        model_ref = model_ref or getattr(self, 'model_config', None)
-        if model_ref is not None:
-            self.modelwrap=GenModelWrap.from_ref(model_ref)
-            self.update_config(dict(model_config=self.modelwrap.get_config()), overwrite_if_conflict=False)
-            
+        llm_ref = llm_ref or getattr(self, 'llm_config', None)
+        if llm_ref is not None:
+            self.logger.debug(f"llm_ref: {llm_ref}")
+            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+            self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
+
+
         dataset_ref = dataset_ref or getattr(self, 'dataset_config', None)
         if dataset_ref is not None:
             self.dataset=BaseDataset.from_ref(dataset_ref)
@@ -134,31 +137,29 @@ class ExtractionExperiment(BaseDirectory):
             self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
             self.update_config(dict(trainer_config=self.trainwrap.get_config()), overwrite_if_conflict=False)
 
-        pipeline_ref = pipeline_ref or getattr(self, 'pipeline_config', None)
-        if pipeline_ref is not None:
-            self.pipeline=ExtractionPipeline.from_ref(pipeline_ref)
-            self.update_config(dict(pipeline_config=self.pipeline.get_config()), overwrite_if_conflict=False)
-
-
+        extractor_ref = extractor_ref or getattr(self, 'extractor_config', None)
+        if extractor_ref is not None:
+            self.extractor_pipe=ExtractionPipeline.from_ref(extractor_ref)
+            self.update_config(dict(extractor_pipe_config=self.extractor_pipe.get_config()), overwrite_if_conflict=False)
 
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")
 
         assert hasattr(self, 'dataset'), "Dataset must be assigned before loading data"
-        assert hasattr(self, 'pipeline'), "Extraction Pipeline must be assigned before loading data"
-        assert hasattr(self, 'modelwrap'), "ModelWrap must be assigned before loading data"
+        assert hasattr(self, 'extractor_pipe'), "Extraction extractor_pipe must be assigned before loading data"
+        assert hasattr(self, 'llm_pipe'), "llm_pipe must be assigned before loading data"
 
         train_df=self.dataset.get_df_splits('train')
         eval_df=self.dataset.get_df_splits(['test','eval'])
 
-        self.modelwrap.load_training_tokenizer()
-        self.modelwrap.load_inference_tokenizer()
+        self.llm_pipe.load_training_tokenizer()
+        self.llm_pipe.load_inference_tokenizer()
 
-        train_df=self.pipeline.prepare_df_for_finetuning(train_df)
-        train_ds=self.pipeline.get_ds_for_finetuning(train_df, self.modelwrap.get_training_tokenizer()) # tokenizer type doesnt matter at this point, because padding is not applied
+        train_df=self.extractor_pipe.prepare_df_for_finetuning(train_df)
+        train_ds=self.extractor_pipe.get_ds_for_finetuning(train_df, self.llm_pipe.get_training_tokenizer()) # tokenizer type doesnt matter at this point, because padding is not applied
 
-        eval_df=self.pipeline.prepare_df_for_completion(eval_df)
-        eval_ds=self.pipeline.get_ds_for_completion(eval_df,  self.modelwrap.get_inference_tokenizer())
+        eval_df=self.extractor_pipe.prepare_df_for_completion(eval_df)
+        eval_ds=self.extractor_pipe.get_ds_for_completion(eval_df,  self.llm_pipe.get_inference_tokenizer())
 
         self.train_df=train_df
         self.eval_df=eval_df
@@ -176,18 +177,18 @@ class ExtractionExperiment(BaseDirectory):
 
         trainer= self.trainwrap.get_trainer(
             model=model,
-            tokenizer=self.modelwrap.get_training_tokenizer(),
+            tokenizer=self.llm_pipe.get_training_tokenizer(),
             train_dataset=self.train_ds,
             #args=trainer_args,
         )
 
-        trainer.add_callback(EvaluationCallback(self))
+        trainer.add_callback(PredictionCallback(self))
 
         return trainer
     
     def evaluate_base_model(self,model):
 
-        eval_callback=EvaluationCallback(self)
+        eval_callback=PredictionCallback(self)
         
         eval_df=eval_callback.get_eval_df(model)
         eval_callback.save_eval_df(eval_df,0)
@@ -202,7 +203,7 @@ class ExtractionExperiment(BaseDirectory):
             return
 
         self.timestamp_run=get_timestamp()
-        base_model=self.modelwrap.get_model()
+        base_model=self.llm_pipe.get_model()
 
         self.load_data(**kwargs)
 
@@ -211,7 +212,7 @@ class ExtractionExperiment(BaseDirectory):
 
         trainer=self.get_trainer(model=base_model,**kwargs)
         trainer_args=trainer.args.to_dict()
-        save_yaml(trainer_args, f"{self.path}/trainer_args.yaml")
+        save_yaml(trainer_args, f"{self._path}/trainer_args.yaml")
 
         trainer.train()
 
@@ -222,29 +223,26 @@ class ExtractionExperiment(BaseDirectory):
     
     def spawn(self):
 
-        if not self.modelwrap.is_spawned(): self.modelwrap.spawn()
+        if not self.llm_pipe.is_spawned(): self.llm_pipe.spawn()
         if not self.dataset.is_spawned(): self.dataset.spawn()
         if not self.trainwrap.is_spawned(): self.trainwrap.spawn()
-        if not self.pipeline.is_spawned(): self.pipeline.spawn()
-
+        if not self.extractor_pipe.is_spawned(): self.extractor_pipe.spawn()
+        
         super().spawn()
 
     def get_evals_df(self):
 
-        fns=os.listdir(self.path)
+        fns=os.listdir(self._path)
         fns=[fn for fn in fns if fn.endswith('eval_df.pkl')]
         evals_df=pd.DataFrame()
         for fn in fns:
             global_step=int(fn[:4])
-            eval_df=pd.read_pickle(f"{self.path}/{fn}")
+            eval_df=pd.read_pickle(f"{self._path}/{fn}")
             eval_df['global_step']=global_step
             evals_df=pd.concat([evals_df,eval_df])
 
         evals_df.reset_index(drop=True, inplace=True)
         return evals_df
-
-
-
 
 
 

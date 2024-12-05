@@ -33,8 +33,8 @@ class BaseDataset(BaseDirectory):
         self._config_key_order.extend([])
         self._config_keys_to_exclude.extend(['df','dataset_df','emb_model'])
 
-        if os.path.exists(f'{self.path}/dataset_df.pkl'):
-            self.dataset_df=pd.read_pickle(f'{self.path}/dataset_df.pkl')
+        if os.path.exists(f'{self._path}/dataset_df.pkl'):
+            self.dataset_df=pd.read_pickle(f'{self._path}/dataset_df.pkl')
             if dataset_df is not None: raise ValueError("dataset_df already exists")
 
         elif dataset_df is not None:
@@ -62,9 +62,9 @@ class BaseDataset(BaseDirectory):
         self.spawn_config()
 
         self.dataset_df.reset_index(drop=True, inplace=True)
-        self.dataset_df.to_pickle(f"{self.path}/dataset_df.pkl")
+        self.dataset_df.to_pickle(f"{self._path}/dataset_df.pkl")
 
-        logging.info(f"{self.name.upper()} spawned at {self.path}")
+        logging.info(f"{self.name.upper()} spawned at {self._path}")
   
     def arrange_sample(self, sample, tokenizer):
 
