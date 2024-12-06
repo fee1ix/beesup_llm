@@ -70,45 +70,32 @@ class ExtractionPipeline(BaseDirectory):
         return cls(ref=pre_config, **kwargs)
 
     def __init__(self, ref=None, llm_ref=None, **kwargs):
-
         super().__init__(ref, **kwargs)
-
-        self._config_key_order.extend([])
-        self._config_keys_to_exclude.extend(['llm_pipe'])
 
         self._default_config=dict(
             use_extraction_prompt=True,
             use_few_shots=True,
-
             llm_config=dict(
-                model_name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct',
                 generation_config=dict(
-                    max_new_tokens=4000,
-                    #max_time=600,
                     stop_strings=['}\n```'],
                 )
             )
         )
 
+        self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
+        self._config_keys_to_exclude.extend([])
 
         self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.update_config_smart(
-            kwargs, 
-            interpret_none_as_val=True, 
-            overwrite_if_conflict=True, 
-            allow_new_atomic_keys=False, 
-            allow_new_nested_keys=False
-        )
-    
+        self.update_config_smart(kwargs)
 
-        llm_ref = llm_ref or getattr(self, 'llm_config', None)
-        if llm_ref is not None:
-            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            #self.llm_pipe.update_config(self.get_config()['llm_config'])
-            #self.llm_pipe.update_config(self.get_config())
-            self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
-            
+        self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+        #self.llm_pipe.update_config(self.llm_config)
+        self.llm_pipe.update_config(self._default_config['llm_config'])
+        self.llm_pipe.update_config_smart(kwargs)
+        self.llm_config=self.llm_pipe.get_config()
+        #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
 
+ 
     def get_prompting_config(self, **kwargs):
 
         prompting_config=dict(
@@ -161,7 +148,7 @@ class ExtractionPipeline(BaseDirectory):
         return ds
 
     @staticmethod
-    def get_pred_df_parse_only(df,*kwargs):
+    def get_pred_df_parse_only(df, **kwargs):
         assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
         
         df[['pred_json','pred_is_valid','pred_is_empty']]=None,None,None
@@ -179,20 +166,11 @@ class ExtractionPipeline(BaseDirectory):
     def get_pred_df(self, df, llm_pipe, **kwargs):
 
         df = self.prepare_df_for_completion(df, **kwargs)
-        #ds=self.get_ds_for_completion(df, tokenizer=llm_pipe.get_inference_tokenizer(), **kwargs)
-
         llm_pipe.prepare_inference()
 
         df = llm_pipe.get_pred_df(df, **kwargs)
+        self.llm_pipe._recent_generation_config=llm_pipe._recent_generation_config
         df = self.get_pred_df_parse_only(df)
-
-        # generation_outputs=llm_pipe.generation_loop(ds,**kwargs)
-        # self._generation_outputs=generation_outputs
-
-        # generation_df=to_outputs_df(generation_outputs,tokenizer=llm_pipe.get_inference_tokenizer())
-        # self._generation_df=generation_df
-        # df['pred_completion']=generation_df['pred_completion'].values
-
         return df
 
     
@@ -200,25 +178,17 @@ class ExtractionPipeline(BaseDirectory):
 
         if llm_ref is not None:
             llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+            llm_pipe.update_config(self._default_config['llm_config'])
+            #llm_pipe.update_config(self.llm_config)
+    
+        elif hasattr(self, 'llm_pipe'):
+            llm_pipe=self.llm_pipe
 
-        elif hasattr(self, 'llm_pipe'): llm_pipe=self.llm_pipe
-
-        generation_config=llm_pipe.get_config()['generation_config']
-        generation_config=update_dict(generation_config, self.llm_config['generation_config'], interpret_none_as_val=True, overwrite_if_conflict=True)
-        generation_config=update_dict_smart(
-            generation_config, 
-            kwargs, 
-            interpret_none_as_val=True,
-            overwrite_if_conflict=True,
-            allow_new_atomic_keys=False,
-            allow_new_nested_keys=False
-            )
-        
         if isinstance(the_input, str): #input is a single report passage
-            return self.get_pred(the_input, llm_pipe, generation_config=generation_config, **kwargs)
+            return self.get_pred(the_input, llm_pipe, **kwargs)
         
         elif isinstance(the_input, pd.DataFrame): #input is a dataframe containing a column 'report_passage'
-            return self.get_pred_df(the_input, llm_pipe, generation_config=generation_config, **kwargs)
+            return self.get_pred_df(the_input, llm_pipe, **kwargs)
 
         elif isinstance(the_input, Dataset):
             self.logger.info("Dataset input detected")
