@@ -2,7 +2,7 @@ import re
 import copy
 import logging
 
-def is_nested(a_dict):
+def is_nested_dict(a_dict):
     return any(isinstance(v, dict) for v in a_dict.values())
 
 def is_unique(element, a_list):
@@ -22,6 +22,14 @@ def get_keys(the_dict, atomic_only=False):
         if isinstance(v, dict):
             keys.extend(get_keys(v, atomic_only))
     return keys
+
+def has_keys(the_dict, keys, atomic_only=False):
+    return all([k in get_keys(the_dict, atomic_only=atomic_only) for k in keys])
+
+def has_key(the_dict, key, atomic_only=False):
+    return key in get_keys(the_dict, atomic_only=atomic_only)
+
+
 
 
 def filter_dict_valuetypes(the_dict, valuetypes=[], invert=False):
@@ -82,21 +90,30 @@ def filter_dict_keylist(the_dict, keylist=[], invert=False):
     
     return _recursive(the_dict)
 
-def filter_dict_keydict(the_dict, ref_dict):
+
+
+def filter_dict_keydict(the_dict, ref_dict, invert=False):
+
 
     def _recursive(the_dict,ref_dict):
         new_dict=dict()
         for k,v in the_dict.items():
             if k in ref_dict:
-
                 if isinstance(v, dict):
                     new_dict[k]=_recursive(v, ref_dict[k])
                 else:
                     new_dict[k]=v
 
         return new_dict
+    
+    
+    if invert:
+        new_dict = filter_dict_keylist(the_dict, keylist=get_keys(ref_dict,atomic_only=False), invert=True)
+    
+    else:
+        new_dict = _recursive(the_dict, ref_dict)
 
-    return _recursive(the_dict, ref_dict)
+    return new_dict
 
 
 
@@ -104,6 +121,8 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
     """
     Update origin_dict with values from update_dict. If overwrite is True, values from update_dict will overwrite values from origin_dict
     """
+
+
 
     def _recursive(orign_dict, mixin_dict):
         for k, v in mixin_dict.items():
@@ -137,6 +156,8 @@ def get_dict_value_from_keypath(the_dict, keypath):
         
     return _recursive(the_dict, keypath)
 
+
+
 def get_dict_keypath(the_dict,key):
 
     all_keys=get_keys(the_dict, atomic_only=False)
@@ -153,6 +174,8 @@ def get_dict_keypath(the_dict,key):
                     return [k] + keypath
     
     return _recursive(the_dict, key)
+
+
 
 def set_dict_keypath(the_dict, keypath, value, inplace=False):
 
@@ -190,9 +213,8 @@ def del_dict_keypath(the_dict, keypath, inplace=False):
         _recursive(new_dict, keypath)
         return new_dict 
 
-
-
 def nestify_dict_like(the_dict, ref_dict):
+
     ref_keys = get_keys(ref_dict)
     the_keys = get_keys(the_dict)
 
@@ -211,6 +233,7 @@ def nestify_dict_like(the_dict, ref_dict):
             #the_dict=set_dict_keypath(the_dict, ref_keypath, the_dict[k])
             the_dict=del_dict_keypath(the_dict, the_keypath)
             #del the_dict[k]
+
 
     return the_dict
 
@@ -250,3 +273,21 @@ def update_dict_smart(
         )
     
     return orign_dict
+
+
+
+
+def pick_from_dict(taker_dict, giver_dict):
+
+    taker_dict=update_dict_smart(
+        taker_dict,
+        giver_dict,
+        interpret_none_as_val=True,
+        overwrite_if_conflict=True,
+        allow_new_atomic_keys=False,
+        allow_new_nested_keys=False,
+    )
+
+    giver_dict=filter_dict_keydict(giver_dict, taker_dict, invert=True)
+
+    return taker_dict, giver_dict

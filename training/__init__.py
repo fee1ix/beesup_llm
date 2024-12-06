@@ -99,11 +99,9 @@ class BaseTrainerWrap(BaseDirectory):
 
     def get_tokenizer(self):
 
-        if hasattr(self,'modelwrap'): 
+        if hasattr(self,'llm_pipe'): 
             return self.llm_pipe.get_training_tokenizer()
 
-
-     
     def run(self, trainer, **kwargs):
 
         #trainer = kwargs.get('trainer', self.get_trainer(**kwargs))
@@ -116,7 +114,7 @@ class BaseTrainerWrap(BaseDirectory):
 
         self.done=True
         self.timestamp_end=get_timestamp()
-        set_config(self.get_config())
+        set_config(self.get_config(), path=self._path)
 
         import gc
         gc.collect()

@@ -30,8 +30,23 @@ class BaseDataset(BaseDirectory):
 
     def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
-        self._config_key_order.extend([])
+
+        self._default_config=dict(
+            remarks=None,
+            emb_model_config=None,
+            parent_config=None
+        )
+        self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
         self._config_keys_to_exclude.extend(['df','dataset_df','emb_model'])
+
+        self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
 
         if os.path.exists(f'{self._path}/dataset_df.pkl'):
             self.dataset_df=pd.read_pickle(f'{self._path}/dataset_df.pkl')
