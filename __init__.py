@@ -41,7 +41,7 @@ class BaseDirectory(object):
     @classmethod
     def get_overview(cls, keypaths=[]):
 
-        _keypaths=['path','id','name']+keypaths
+        _keypaths=['id','name']+keypaths
         dir_path=cls.get_dir_path()
 
         if not os.path.exists(dir_path): raise FileNotFoundError(f"{dir_path} does not exist")
@@ -59,6 +59,8 @@ class BaseDirectory(object):
 
             config_dict = load_dict(config_path)
 
+
+            overview_row['path']=f"{get_lab_path(config_dict['lab_name'])}/{config_dict['dir_name']}/{config_dict['name']}"
             for keypath in _keypaths:
 
                 keypath_list=split_keypath(keypath)
@@ -157,29 +159,33 @@ class BaseDirectory(object):
         new_config=get_config_from_type(type=self.type)
         self.update_config(new_config, overwrite_if_conflict=True)
 
+
     def get_updated_config(self, kwargs, config_key='some_config'):
 
         config_dict=self.get_config()
 
-        if hasattr(config_dict,config_key):
-            base_config=copy.deepcopy(config_dict[config_key])
-        else:
-            keypath=get_dict_keypath(config_dict,config_key)
-            base_config=copy.deepcopy(get_dict_value_from_keypath(keypath))
-        
+        if not has_key(config_dict,config_key,atomic_only=False): raise ValueError(f"config_key '{config_key}' not found in config_dict.")
 
+        base_keypath=get_dict_keypath(config_dict,config_key)
+        base_config=copy.deepcopy(get_dict_value_from_keypath(config_dict,base_keypath))
         self.logger.debug(f"base_config: {base_config}")
-        if config_key in kwargs: kwargs.update(kwargs.get(config_key))
 
-        self.logger.debug(f"kwargs: {kwargs}")
-
-        kwargs={k:v for k,v in kwargs.items() if k in base_config.keys()}
-
-        base_config.update(kwargs)
-
-        self.logger.debug(f"updated_config: {base_config}")
-        return base_config
+        if has_key(kwargs, config_key, atomic_only=False):
+            mixin_keypath=get_dict_keypath(config_dict,config_key)
+            mixin_config=copy.deepcopy(get_dict_value_from_keypath(config_dict,mixin_keypath))
+            #reduced_kwargs=copy.deepcopy(del_dict_keypath(kwargs, mixin_keypath))
+        
+        else:
+            mixin_config=filter_dict_keydict(kwargs, base_config)
+            #reduced_kwargs=filter_dict_keydict(kwargs, mixin_config, invert=True)
+        
+        updated_config=update_dict(base_config, mixin_config, overwrite_if_conflict=True)
+        self.logger.debug(f"updated_config: {updated_config}")
+        return updated_config
     
+    def is_spawned(self):
+        return os.path.exists(f'{self._path}')
+
     def spawn_config(self):
 
         if not os.path.exists(f'{self._dir_path}'):
@@ -195,12 +201,11 @@ class BaseDirectory(object):
 
         if not os.path.exists(f'{self._path}'):
             os.makedirs(f'{self._path}', exist_ok=False)
+        
 
         set_config(self.get_config(), path=self._path)
         self.logger.info(f"{self.name.upper()} config spawned at {self.rel_path}")
 
-    def is_spawned(self):
-        return os.path.exists(f'{self._path}')
 
     def get_config(self):
 
@@ -210,20 +215,10 @@ class BaseDirectory(object):
             if hasattr(self, key): 
                 config[key]=getattr(self, key)
 
-        #config = {k: getattr(self, k) for k in self._config_key_order if hasattr(self, k)}
-
         further_items=self.__dict__
         further_items=filter_dict_valuetypes(further_items,valuetypes=[str,int,float,bool,dict,list,tuple])
         further_items=filter_dict_keypatterns(further_items, [r'^_'], invert=True)
-
         config.update(further_items)
-
-        # config.update({k: v for k, v in self.__dict__.items() if 
-        #                (k not in self._config_keys_to_exclude) and
-        #                (not k.startswith('_')) and
-        #                #(not isinstance(v, (pd.DataFrame))) and
-        #                #(isinstance(k,(str,int,float,dict,list,tuple))) and
-        #                (k not in self._config_key_order)})
 
         return config
 
