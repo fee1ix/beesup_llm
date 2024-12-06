@@ -140,12 +140,6 @@ class LanguageModelPipeline(BaseModelPipeline):
                 max_time=600,
                 stop_strings=None,
             ),
-            data_collator_config=dict(
-                label_pad_token_id=-100,
-            ),
-            dataloader_config=dict(
-                batch_size=4,
-            )
         )
 
         self._config_key_order.extend(list(self._default_config.keys()))
@@ -229,13 +223,13 @@ class LanguageModelPipeline(BaseModelPipeline):
         else:
             return self.training_tokenizer
 
-    def load_pipeline(self, **kwargs):
-        self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, **kwargs)
+    def load_pipeline(self,**kwargs):
+        self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer,**kwargs)
 
     def get_pipeline(self, **kwargs):
         pipeline=getattr(self, 'pipeline', None)
         if pipeline is None:
-            self.load_pipeline()
+            self.load_pipeline(**kwargs)
             pipeline=self.pipeline
             del self.pipeline
             return pipeline
