@@ -164,7 +164,8 @@ class BaseDirectory(object):
 
         config_dict=self.get_config()
 
-        if not has_key(config_dict,config_key,atomic_only=False): raise ValueError(f"config_key '{config_key}' not found in config_dict.")
+        if not has_key(config_dict,config_key,atomic_only=False):
+            raise ValueError(f"config_key '{config_key}' not found in config_dict.")
 
         base_keypath=get_dict_keypath(config_dict,config_key)
         base_config=copy.deepcopy(get_dict_value_from_keypath(config_dict,base_keypath))
