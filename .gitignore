@@ -1,5 +1,7 @@
 **/__pycache__/
 
+*.html
+
 # ignore latex auxiliary files on all levels
 **/*.aux
 **/*.log
