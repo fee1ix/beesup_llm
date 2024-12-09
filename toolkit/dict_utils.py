@@ -31,7 +31,6 @@ def has_key(the_dict, key, atomic_only=False):
 
 
 
-
 def filter_dict_valuetypes(the_dict, valuetypes=[], invert=False):
 
     if (dict in valuetypes) and not invert: valuetypes.remove(dict)
@@ -122,8 +121,6 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
     Update origin_dict with values from update_dict. If overwrite is True, values from update_dict will overwrite values from origin_dict
     """
 
-
-
     def _recursive(orign_dict, mixin_dict):
         for k, v in mixin_dict.items():
             # Check if both original[key] and value are dictionaries
@@ -141,7 +138,6 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
 
     return _recursive(orign_dict, mixin_dict)
 
-
 def get_dict_value_from_keypath(the_dict, keypath):
 
     def _recursive(the_dict, keypath):
@@ -155,8 +151,6 @@ def get_dict_value_from_keypath(the_dict, keypath):
             return None
         
     return _recursive(the_dict, keypath)
-
-
 
 def get_dict_keypath(the_dict,key):
 
@@ -174,8 +168,6 @@ def get_dict_keypath(the_dict,key):
                     return [k] + keypath
     
     return _recursive(the_dict, key)
-
-
 
 def set_dict_keypath(the_dict, keypath, value, inplace=False):
 
@@ -213,8 +205,9 @@ def del_dict_keypath(the_dict, keypath, inplace=False):
         _recursive(new_dict, keypath)
         return new_dict 
 
-def nestify_dict_like(the_dict, ref_dict):
 
+
+def nestify_dict_like(the_dict, ref_dict):
     ref_keys = get_keys(ref_dict)
     the_keys = get_keys(the_dict)
 
@@ -233,7 +226,6 @@ def nestify_dict_like(the_dict, ref_dict):
             #the_dict=set_dict_keypath(the_dict, ref_keypath, the_dict[k])
             the_dict=del_dict_keypath(the_dict, the_keypath)
             #del the_dict[k]
-
 
     return the_dict
 
