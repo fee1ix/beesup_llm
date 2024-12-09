@@ -2,8 +2,9 @@ from beesup_llm import *
 from beesup_llm.toolkit.setup_utils import *
 from beesup_llm.injection.taxomizing_utils import *
 
-from beesup_llm.model import *
 from beesup_llm.dataset import *
+from beesup_llm.model_pipelines import *
+
 
 import pickle
 import pandas as pd
@@ -14,13 +15,10 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
 
 
-
-
-
 class TaxomizingPipeline(BaseDirectory):
     type='taxomizing_pipeline'
 
-    def __init__(self, ref=None, dataset_ref=None, model_ref=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, llm_ref=None, chunks_df=None, **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
@@ -37,29 +35,22 @@ class TaxomizingPipeline(BaseDirectory):
         self._config_key_order.extend(list(self._default_config.keys()))
         self._config_keys_to_exclude.extend(['chunks_df','nodes_df','tree'])
 
-
         self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.update_config_smart(kwargs)
 
-        self.update_config_smart(
-            kwargs, 
-            interpret_none_as_val=True, 
-            overwrite_if_conflict=True, 
-            allow_new_atomic_keys=False, 
-            allow_new_nested_keys=False
-        )
-
-
-        model_ref = model_ref or getattr(self, 'model_config', None)
-        if model_ref is not None:
-            self.modelwrap=GenModelWrap.from_ref(model_ref)
-            self.update_config(dict(model_config=self.modelwrap.get_config()), overwrite_if_conflict=False)
-            
-        dataset_ref = dataset_ref or getattr(self, 'dataset_config', None)
-        if dataset_ref is not None:
+        if llm_ref:
+            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+            self.llm_pipe.update_config(self._default_config['llm_config'])
+            self.llm_pipe.update_config_smart(kwargs)
+            self.llm_config=self.llm_pipe.get_config()
+        
+        if dataset_ref:
             self.dataset=BaseDataset.from_ref(dataset_ref)
             self.update_config(dict(dataset_config=self.dataset.get_config()), overwrite_if_conflict=False)
-    
 
+        if chunks_df:
+            self.chunks_df=chunks_df
+    
     def load_linkage_matrix(self, chunks_df):
 
         distance_matrix = cosine_distances(np.vstack(chunks_df['emb'].values))
@@ -81,6 +72,29 @@ class TaxomizingPipeline(BaseDirectory):
         
         else:
             return self.linkage_matrix
+        
+    def get_flattened_tree(self, chunks_df=None):
+
+        linkage_matrix=self.get_linkage_matrix(chunks_df)
+        tree=linkage_to_btree(linkage_matrix, chunks_df)
+
+        ### Flattening the tree: several options
+
+        threshold_dist, index = get_dist_kneepoint(tree,  include_leaves=False)
+        tree=do_dist_flattening(tree, threshold_dist=threshold_dist)
+
+        add_ddist(tree)
+        threshold_ddist, index = get_ddist_kneepoint(tree, include_leaves=False, plot=False)
+        tree=do_ddist_flattening(tree, threshold_ddist=threshold_ddist)
+
+        tree=recover_leaf_parents(tree)
+
+        return tree   
+
+
+
+    
+
         
     
 
