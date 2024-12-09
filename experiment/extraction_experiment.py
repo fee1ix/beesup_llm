@@ -13,6 +13,7 @@ from beesup_llm.extraction.extraction_pipeline import *
 
 
 from transformers import TrainerCallback
+
 class PredictionCallback(TrainerCallback):
     def __init__(self, experiment):
         self.experiment = experiment
@@ -128,7 +129,7 @@ class ExtractionExperiment(BaseDirectory):
             self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
             self.trainwrap.update_config(self._default_config['trainer_config'])
             self.trainwrap.update_config_smart(kwargs)
-            self.trainer_config['trainer_args']['seed']=self.seed
+            self.trainwrap.trainer_args['seed']=self.seed
             self.trainer_config=self.trainwrap.get_config()
         
         if extractor_ref:
@@ -161,6 +162,7 @@ class ExtractionExperiment(BaseDirectory):
 
         self.train_ds=train_ds
         self.eval_ds=eval_ds
+
 
     def get_trainer(self, model=None, **kwargs):
         assert model is not None, "model must be passed"

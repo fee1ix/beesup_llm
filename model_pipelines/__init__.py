@@ -415,9 +415,6 @@ class MistralPipeline(LanguageModelPipeline):
         )
 
 
-
-
-
 class EmbeddingModelPipeline(BaseModelPipeline):
     type='emb_pipeline'
 
