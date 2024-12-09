@@ -160,9 +160,6 @@ def get_tree_info_dict(tree):
         num_root_children=len(tree.children),
         num_leaves=[n.is_leaf for n in nodes].count(True),
         num_per_height=[len([n for n in PreOrderIter(tree) if n.height==h]) for h in range(tree.height,0,-1)][:10],
-        #mean_num_children=np.mean(np.array([len(n.children) for n in nodes if not n.height<=1])),
-        #mean_num_inner_children=np.mean(np.array([len([c for c in n.children if not c.is_leaf]) for n in nodes if not n.height<=1])),
-        #mean_num_inner_children=np.mean(np.array([len(n.children) for n in nodes if n.is_leaf])),
     )
 
     return tree_info_dict
@@ -196,6 +193,9 @@ def linkage_to_btree(linkage_matrix, chunks_df):
 
     root=nodes[len(linkage_matrix) + n_leaves - 1]
     return root
+
+
+
 
 def add_ddist(tree):
 
@@ -240,7 +240,7 @@ from kneed import KneeLocator
 import matplotlib.pyplot as plt
 
 # dist flattening --> vertical!!
-def get_dist_kneepoint(tree, include_leaves=True ,plot=False):
+def get_dist_kneepoint(tree, include_leaves=True, plot=False):
 
     if include_leaves:
         sorted_dists=sorted([n.dist for n in PreOrderIter(tree)])
