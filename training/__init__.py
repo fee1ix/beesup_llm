@@ -45,6 +45,7 @@ class BaseTrainerWrap(BaseDirectory):
 
         self._default_config=dict(
             trainer_args=dict(
+                seed=33,
                 #auto_find_batch_size=True,
                 auto_find_batch_size=False,
                 per_device_train_batch_size=4,
@@ -88,10 +89,10 @@ class BaseTrainerWrap(BaseDirectory):
         )
 
 
-        if llm_ref is not None:
+        if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
 
-        if dataset_ref is not None:
+        if dataset_ref:
             self.dataset=BaseDataset.from_ref(dataset_ref)
 
     def get_model(self):
@@ -219,6 +220,8 @@ class LoraTrainerWrap(BaseTrainerWrap):
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
 
         self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.update_config_smart(kwargs)
+
 
     def prepare_model_for_lora(self, model, **kwargs):
 
@@ -266,7 +269,6 @@ class LoraTrainerWrap(BaseTrainerWrap):
         tokenizer = kwargs.get('tokenizer', self.get_tokenizer())
         
         lora_config=LoraConfig(**self.get_updated_config(kwargs, config_key='lora_config'))
-
         trainer_args=TrainingArguments(**self.get_updated_config(kwargs, config_key='trainer_args'))
 
         data_collator_config=self.get_updated_config(kwargs, config_key='data_collator_config')
