@@ -55,9 +55,6 @@ class ExtractionExperiment(BaseDirectory):
             multirun_df=overview_df[overview_df['done']==False].copy()
             multirun_df.reset_index(drop=True, inplace=True)
 
-        
-        
-
         multirun_config=dict(
             framework_dirs=[os.path.dirname(path) for path in beesup_llm.__path__], #add as sys path in the run script
             module_path=__file__,
@@ -117,34 +114,27 @@ class ExtractionExperiment(BaseDirectory):
             extractor_ref=self.extractor_config
 
 
-        self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-        #self.llm_pipe.update_config(self.llm_config)
-        self.llm_pipe.update_config(self._default_config['llm_config'])
-        self.llm_pipe.update_config_smart(kwargs)
-        #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
-        self.llm_config=self.llm_pipe.get_config()
+        if llm_ref:
+            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+            self.llm_pipe.update_config(self._default_config['llm_config'])
+            self.llm_pipe.update_config_smart(kwargs)
+            self.llm_config=self.llm_pipe.get_config()
         
-
-        self.dataset=BaseDataset.from_ref(dataset_ref)
-        #self.update_config(dict(dataset_config=self.dataset.get_config()), overwrite_if_conflict=False)
-        self.dataset_config=self.dataset.get_config()
-
-
-        self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
-        #self.trainwrap.update_config(self.trainer_config)
-        self.trainwrap.update_config(self._default_config['trainer_config'])
-        self.trainwrap.update_config_smart(kwargs)
-        self.trainer_config['trainer_args']['seed']=self.seed
-        #self.update_config(dict(trainer_config=self.trainwrap.get_config()), overwrite_if_conflict=False)
-        self.trainer_config=self.trainwrap.get_config()
-
-
-        self.extractor_pipe=ExtractionPipeline.from_ref(extractor_ref, llm_ref=self.llm_pipe)
-        self.extractor_pipe.update_config_smart(kwargs)
-        #self.update_config(dict(extractor_config=self.extractor_pipe.get_config()), overwrite_if_conflict=False)
-        self.extractor_config=self.extractor_pipe.get_config()
+        if dataset_ref:
+            self.dataset=BaseDataset.from_ref(dataset_ref)
+            self.dataset_config=self.dataset.get_config()
         
-
+        if trainer_ref:
+            self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
+            self.trainwrap.update_config(self._default_config['trainer_config'])
+            self.trainwrap.update_config_smart(kwargs)
+            self.trainer_config['trainer_args']['seed']=self.seed
+            self.trainer_config=self.trainwrap.get_config()
+        
+        if extractor_ref:
+            self.extractor_pipe=ExtractionPipeline.from_ref(extractor_ref, llm_ref=self.llm_pipe)
+            self.extractor_pipe.update_config_smart(kwargs)
+            self.extractor_config=self.extractor_pipe.get_config()
         
 
     def load_data(self, **kwargs):
@@ -222,6 +212,8 @@ class ExtractionExperiment(BaseDirectory):
         return
     
     def spawn(self):
+        if not all([hasattr(self, attr) for attr in ['llm_pipe','dataset','trainwrap','extractor_pipe']]):
+            raise ValueError("llm_pipe, dataset, trainwrap, extractor_pipe must be assigned before spawning.")
 
         if not self.llm_pipe.is_spawned(): self.llm_pipe.spawn()
         if not self.dataset.is_spawned(): self.dataset.spawn()
