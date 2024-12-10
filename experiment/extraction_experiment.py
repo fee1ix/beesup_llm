@@ -92,7 +92,7 @@ class ExtractionExperiment(BaseDirectory):
             trainer_config=dict(
                 trainer_args=dict(
                     num_train_epochs=10,
-                    per_device_train_batch_size=4,
+                    #per_device_train_batch_size=4,
                     output_dir=f"{self._path}",
                     save_strategy='no',
                     eval_strategy='no',
