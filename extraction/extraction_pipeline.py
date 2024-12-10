@@ -90,7 +90,8 @@ class ExtractionPipeline(BaseDirectory):
 
         if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            self.llm_pipe.update_config(self._default_config['llm_config'])
+            self.llm_pipe.update_config(self.llm_config)
+            #self.llm_pipe.update_config(self._default_config['llm_config'])
             self.llm_pipe.update_config_smart(kwargs)
             self.llm_config=self.llm_pipe.get_config()
             #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
@@ -178,7 +179,8 @@ class ExtractionPipeline(BaseDirectory):
 
         if llm_ref:
             llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            llm_pipe.update_config(self._default_config['llm_config'])
+            llm_pipe.update_config(self.llm_config)
+            #llm_pipe.update_config(self._default_config['llm_config'])
     
         elif hasattr(self, 'llm_pipe'):
             llm_pipe=self.llm_pipe
