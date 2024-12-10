@@ -305,6 +305,7 @@ def get_config_from_dict(the_dict):
 
         if the_dict.get('name', None) is not None:
             the_dict['id'] = int(the_dict['name'][:4])
+            #the_dict['type'] = the_dict['name'][5:]
 
         if all([bool(the_dict.get(k, None)) for k in ['type','id']]):
             return get_config_from_id(**the_dict)
