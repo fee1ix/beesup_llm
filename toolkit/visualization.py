@@ -40,8 +40,6 @@ def get_different_colors(n):
 
     return ['rgb'+str(c) for c in colors]
 
-
-
 def assign_colors_list(cluster_ids):
     cluster_ids = [cid if not np.isnan(cid) else -1.0 for cid in cluster_ids]
     unique_clusters = np.unique(cluster_ids)
@@ -94,8 +92,6 @@ def print_multicol(cols):
 </div>
 """
     display(HTML(html_content))
-
-
 
 
 def assign_pca_coords(embs_df, n_components=3):
