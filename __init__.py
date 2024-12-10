@@ -41,9 +41,7 @@ class BaseDirectory(object):
     @classmethod
     def get_overview(cls, keypaths=[]):
 
-        _keypaths=['id','name']+keypaths
         dir_path=cls.get_dir_path()
-
         if not os.path.exists(dir_path): raise FileNotFoundError(f"{dir_path} does not exist")
 
         overview_data=[]
@@ -51,28 +49,54 @@ class BaseDirectory(object):
 
         for id in ids:
             overview_row=dict()
-
             config_path=f"{dir_path}/{str(id).zfill(4)}_{cls.type}/config.yaml"
+
             if not os.path.exists(config_path):
                 cls.logger.warning(f"{config_path} does not exist")
                 continue
 
             config_dict = load_dict(config_path)
+            overview_row['id']=config_dict['id']
+            overview_row['name']=config_dict['name']
 
-
-            overview_row['path']=f"{get_lab_path(config_dict['lab_name'])}/{config_dict['dir_name']}/{config_dict['name']}"
-            for keypath in _keypaths:
-
+            if 'path' in keypaths:
+                overview_row['path']=f"{get_lab_path(config_dict['lab_name'])}/{config_dict['dir_name']}/{config_dict['name']}"
+            #overview_row['path']=f"{get_lab_path(config_dict['lab_name'])}/{config_dict['dir_name']}/{config_dict['name']}"
+            
+            for keypath in keypaths:
+                if keypath == 'path': continue
+                
+                value=None
                 keypath_list=split_keypath(keypath)
-                value=get_value_from_keypath(config_dict, keypath_list)
+
+                if len(keypath_list)==1:
+                    ambiguous_keypaths = get_dict_keypaths(config_dict, keypath_list[0])
+
+                    if len(ambiguous_keypaths)==1:
+                        value=get_dict_value_from_keypath(config_dict, ambiguous_keypaths[0])
+
+                    elif len(ambiguous_keypaths)>1:
+                        ambiguous_values=[]
+                        for ambiguous_keypath in ambiguous_keypaths:
+                            ambiguous_values.append(get_dict_value_from_keypath(config_dict, ambiguous_keypath))
+                        
+                        if len(set(ambiguous_values))==1:
+                            value=ambiguous_values[0]
+                        else:
+                            logging.warning(f"Multiple values found for '{keypath}' in config_dict: {ambiguous_values}")
+
+                else:
+                    value=get_value_from_keypath(config_dict, keypath_list)
+
 
                 if value is not None:
+                    for i in range(1,len(keypath_list)+1):
+                        keypath_str='.'.join(keypath_list[len(keypath_list)-i:])
+                        if keypath_str not in overview_row.keys():
+                            break
+                    
+                    overview_row[keypath_str]=value
 
-                    if keypath_list[-1] not in overview_row.keys():
-                        overview_row[keypath_list[-1]]=value
-                    else:
-                        overview_row['.'.join(keypath_list)]=value
-            
             overview_data.append(overview_row)
         
         return pd.DataFrame(overview_data)
