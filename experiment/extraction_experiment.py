@@ -48,11 +48,11 @@ class ExtractionExperiment(BaseDirectory):
 
         elif isinstance(the_input, list):
             if all(isinstance(x, int) for x in the_input):
-                overview_df=cls.get_overview()
+                overview_df=cls.get_overview(keypaths=['path'])
                 multirun_df=overview_df[overview_df['id'].isin(the_input)]
 
         elif the_input is None:
-            overview_df=cls.get_overview(keypaths=['done'])
+            overview_df=cls.get_overview(keypaths=['path','done'])
             multirun_df=overview_df[overview_df['done']==False].copy()
             multirun_df.reset_index(drop=True, inplace=True)
 
@@ -73,7 +73,6 @@ class ExtractionExperiment(BaseDirectory):
 
         return multirun_df
     
-
     def __init__(self, ref=None, dataset_ref=None, extractor_ref=None, llm_ref=None, trainer_ref=None, **kwargs): 
         super().__init__(ref, **kwargs)
 
@@ -85,15 +84,15 @@ class ExtractionExperiment(BaseDirectory):
 
             llm_config=dict(
                 generation_config=dict(
-                    do_sample=False,
-                    max_new_tokens=1000,
-                    max_time=600,
+                    max_new_tokens=4096,
+                    max_time=1200,
                 ),
             ),
 
             trainer_config=dict(
                 trainer_args=dict(
                     num_train_epochs=10,
+                    per_device_train_batch_size=4,
                     output_dir=f"{self._path}",
                     save_strategy='no',
                     eval_strategy='no',
@@ -137,7 +136,6 @@ class ExtractionExperiment(BaseDirectory):
             self.extractor_pipe.update_config_smart(kwargs)
             self.extractor_config=self.extractor_pipe.get_config()
         
-
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")
 
@@ -162,7 +160,6 @@ class ExtractionExperiment(BaseDirectory):
 
         self.train_ds=train_ds
         self.eval_ds=eval_ds
-
 
     def get_trainer(self, model=None, **kwargs):
         assert model is not None, "model must be passed"
@@ -204,6 +201,9 @@ class ExtractionExperiment(BaseDirectory):
         
         if self.do_train:
             trainer=self.get_trainer(model=base_model,**kwargs)
+
+            self.lora_info = trainer.lora_info
+
             trainer_args=trainer.args.to_dict()
             save_yaml(trainer_args, f"{self._path}/trainer_args.yaml")
             trainer.train()
