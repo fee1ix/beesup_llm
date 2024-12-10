@@ -89,10 +89,7 @@ def filter_dict_keylist(the_dict, keylist=[], invert=False):
     
     return _recursive(the_dict)
 
-
-
 def filter_dict_keydict(the_dict, ref_dict, invert=False):
-
 
     def _recursive(the_dict,ref_dict):
         new_dict=dict()
@@ -113,7 +110,6 @@ def filter_dict_keydict(the_dict, ref_dict, invert=False):
         new_dict = _recursive(the_dict, ref_dict)
 
     return new_dict
-
 
 
 def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True):
@@ -151,6 +147,21 @@ def get_dict_value_from_keypath(the_dict, keypath):
             return None
         
     return _recursive(the_dict, keypath)
+
+def get_dict_keypaths(the_dict, key):
+
+    def _recursive(the_dict, key, current_path=[]):
+        keypaths = []
+        for k, v in the_dict.items():
+            if k == key:
+                keypaths.append(current_path + [k])
+            if isinstance(v, dict):
+                keypaths.extend(_recursive(v, key, current_path + [k]))
+
+        return keypaths
+    
+    return _recursive(the_dict, key)
+
 
 def get_dict_keypath(the_dict,key):
 
@@ -265,7 +276,6 @@ def update_dict_smart(
         )
     
     return orign_dict
-
 
 
 
