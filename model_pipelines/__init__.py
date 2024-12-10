@@ -284,10 +284,12 @@ class LanguageModelPipeline(BaseModelPipeline):
 
     def get_pipeline_output(self, the_input, **kwargs):
 
+        self.logger.debug(f"the_input: {the_input}, kwargs: {kwargs}")
+
         generation_config=self.get_updated_config(kwargs, config_key='generation_config')
         self._recent_generation_config=generation_config
 
-        self.logger.info(f"{self._recent_generation_config}")
+        self.logger.debug(f"{self._recent_generation_config}")
 
         pipeline_kwargs={
             'text_inputs':the_input,
@@ -364,6 +366,7 @@ class LlamaPipeline(LanguageModelPipeline):
             ),
             generation_config=dict(
                 pad_token='<|begin_of_text|>',
+                stop_strings=None,
                 pad_token_id=128000,
             )
         )
@@ -371,7 +374,7 @@ class LlamaPipeline(LanguageModelPipeline):
         self._config_key_order.extend(list(self._default_config.keys()))
         self._config_keys_to_exclude.extend([])
         
-        self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.update_config(self._default_config, overwrite_if_conflict=True)
         self.update_config_smart(
             kwargs, 
             interpret_none_as_val=True, 
@@ -411,7 +414,7 @@ class MistralPipeline(LanguageModelPipeline):
         self._config_key_order.extend(list(self._default_config.keys()))
         self._config_keys_to_exclude.extend([])
         
-        self.update_config(self._default_config, overwrite_if_conflict=False)
+        self.update_config(self._default_config, overwrite_if_conflict=True)
         self.update_config_smart(
             kwargs, 
             interpret_none_as_val=True, 
