@@ -65,17 +65,22 @@ class BaseDirectory(object):
             
             for keypath in keypaths:
                 if keypath == 'path': continue
-                
+
                 value=None
                 keypath_list=split_keypath(keypath)
 
-                if len(keypath_list)==1:
+                if keypath in config_dict.keys():
+                    value=config_dict[keypath]
+
+                elif len(keypath_list)==1:
                     ambiguous_keypaths = get_dict_keypaths(config_dict, keypath_list[0])
 
                     if len(ambiguous_keypaths)==1:
                         value=get_dict_value_from_keypath(config_dict, ambiguous_keypaths[0])
 
                     elif len(ambiguous_keypaths)>1:
+
+
                         ambiguous_values=[]
                         for ambiguous_keypath in ambiguous_keypaths:
                             ambiguous_values.append(get_dict_value_from_keypath(config_dict, ambiguous_keypath))
@@ -241,7 +246,7 @@ class BaseDirectory(object):
                 config[key]=getattr(self, key)
 
         further_items=self.__dict__
-        further_items=filter_dict_valuetypes(further_items,valuetypes=[str,int,float,bool,dict,list,tuple])
+        further_items=filter_dict_valuetypes(further_items,valuetypes=[str,int,float,bool,dict,list,tuple,set,type(None)])
         further_items=filter_dict_keypatterns(further_items, [r'^_'], invert=True)
         config.update(further_items)
 
