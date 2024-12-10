@@ -76,7 +76,6 @@ from transformers import \
     TextGenerationPipeline, \
     TextIteratorStreamer
     
-
 class LanguageModelPipeline(BaseModelPipeline):
     type='llm_pipeline'
 
@@ -190,13 +189,14 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         return
     
-    def get_inference_tokenizer(self):
+    def get_inference_tokenizer(self, keep=False):
 
         inference_tokenizer=getattr(self, 'inference_tokenizer', None)
         if inference_tokenizer is None:
             self.load_inference_tokenizer()
             inference_tokenizer=self.inference_tokenizer
-            del self.inference_tokenizer
+            if not keep:
+                del self.inference_tokenizer
             return inference_tokenizer
         
         else:
@@ -222,6 +222,10 @@ class LanguageModelPipeline(BaseModelPipeline):
         
         else:
             return self.training_tokenizer
+
+    def count_tokens(self, the_input):
+        tokenizer=self.get_inference_tokenizer()
+        return sum(tokenizer(the_input, return_length=True)['length'])
 
     def load_pipeline(self,**kwargs):
         self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer,**kwargs)
@@ -282,6 +286,8 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         generation_config=self.get_updated_config(kwargs, config_key='generation_config')
         self._recent_generation_config=generation_config
+
+        self.logger.info(f"{self._recent_generation_config}")
 
         pipeline_kwargs={
             'text_inputs':the_input,
