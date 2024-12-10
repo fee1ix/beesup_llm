@@ -202,7 +202,7 @@ class ExtractionExperiment(BaseDirectory):
         if self.do_train:
             trainer=self.get_trainer(model=base_model,**kwargs)
 
-            self.lora_info = trainer.lora_info
+            self.lora_info = getattr(self.trainwrap, 'lora_info', None)
 
             trainer_args=trainer.args.to_dict()
             save_yaml(trainer_args, f"{self._path}/trainer_args.yaml")
