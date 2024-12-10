@@ -64,6 +64,24 @@ class EvaluationSample(ExtractionSample):
         self.gold_highlighting=get_char_highlighting(self.gold_completion,self.raw_errors_df,col='gold')
         self.pred_highlighting=get_char_highlighting(self.pred_completion,self.raw_errors_df,col='pred')
         
+    def get_errors_df(self):
+
+        errors_df=self.errors_df.copy()
+        errors_df['pred_val'] = errors_df['pred_val'].astype('object')
+        errors_df['gold_val'] = errors_df['gold_val'].astype('object')
+
+        #errors_df=errors_df[errors_df.is_error==True]
+        errors_df['idx']=None
+        for i,error_row in errors_df.iterrows():
+            if error_row.type in ['fp_obs', 'tp_obs']:
+                errors_df.at[i,'pred_val']=self.pred_df.iloc[int(error_row.p)].scientific_name
+            
+            if error_row.type in ['fn_obs', 'tp_obs']:
+                errors_df.at[i,'gold_val']=self.gold_df.iloc[int(error_row.g)].scientific_name
+
+        return errors_df
+
+    
     def __repr__(self):
         if not hasattr(self, 'gold_highlighting'): self.load_highlighting()
         if not hasattr(self, 'pred_highlighting'): self.load_highlighting()
@@ -92,6 +110,29 @@ class EvaluationPipeline(ExtractionPipeline):
         sample=EvaluationSample(gold_completion=gold_completion, pred_completion=pred_completion, **kwargs)
         return sample.eval_dict
     
+    def get_errors_df(self, df, **kwargs):
+        df=df.copy()
+        assert 'gold_completion' in df.columns, "missing 'gold_completion' column"
+        assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
+
+        
+        errors_df=pd.DataFrame()
+        errors_df['i']=None
+        for i,row in df.iterrows():
+            sample=EvaluationSample(**row)
+            _errors_df=sample.get_errors_df()
+            
+            if _errors_df.empty: continue
+            _errors_df['global_step']=row.get('global_step',None)
+            _errors_df['i']=i
+            _errors_df.dropna(axis=1, how='all')
+            
+            errors_df=pd.concat([errors_df,_errors_df], ignore_index=True)
+
+
+        return errors_df
+
+    
     def get_eval_df(self, df, **kwargs):
         df=df.copy()
         assert 'gold_completion' in df.columns, "missing 'gold_completion' column"
@@ -103,23 +144,16 @@ class EvaluationPipeline(ExtractionPipeline):
             df.at[i,'eval_dict']=sample.eval_dict
 
         return df
-    
-    #def get_condensed_eval(self, df, **kwargs):
-
-
-
-
+  
 
     def __call__(self, the_input, condense=False, **kwargs):
 
         if isinstance(the_input,pd.DataFrame):
-
-            if condense:
-                # df=self.get_eval_df(the_input, **kwargs)
-                # condensed_row=
-                return self.get_eval(the_input, **kwargs)
-
             return self.get_eval_df(the_input, **kwargs)
+        
+        else:
+            return EvaluationSample(**the_input, **kwargs)
+
 
 
 
