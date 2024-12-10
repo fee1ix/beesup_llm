@@ -148,6 +148,27 @@ def get_dict_value_from_keypath(the_dict, keypath):
         
     return _recursive(the_dict, keypath)
 
+def get_dict_value(the_dict, key):
+    ambiguous_keypaths=get_dict_keypaths(the_dict, key)
+
+    value=None
+    if len(ambiguous_keypaths)==1:
+        value=get_dict_value_from_keypath(the_dict, ambiguous_keypaths[0])
+
+    elif len(ambiguous_keypaths)>1:
+
+        ambiguous_values=[]
+        for ambiguous_keypath in ambiguous_keypaths:
+            ambiguous_values.append(get_dict_value_from_keypath(the_dict, ambiguous_keypath))
+        
+        if len(set(ambiguous_values))==1:
+            value=ambiguous_values[0]
+
+        else:
+            logging.warning(f"Multiple values found for '{key}' in config_dict: {ambiguous_values}")
+
+    return value
+
 def get_dict_keypaths(the_dict, key):
 
     def _recursive(the_dict, key, current_path=[]):
