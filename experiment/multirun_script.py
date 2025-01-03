@@ -4,6 +4,17 @@ import sys
 import yaml
 import subprocess
 
+import logging
+def set_info():
+    logger = logging.getLogger('beesup_llm')
+    logger.setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.INFO)
+
+def set_debug():
+    logger = logging.getLogger('beesup_llm')
+    logger.setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.DEBUG)
+
 # Access the input arguments
 if len(sys.argv) < 2:
     print("Usage: python script.py <input_argument>")
@@ -22,6 +33,8 @@ for i, experiment_dir in enumerate(multirun_config['experiment_dirs']):
     experiment_config=load_yaml(f"{experiment_dir}/config.yaml")
 
     print(f"RUNNING EXPERIMENT {i+1}/{len(multirun_config['experiment_dirs'])}\t{experiment_config['name']}")
+
+    set_debug()
 
     stdout_log = os.path.join(experiment_dir, f"stdout.log")
     stderr_log = os.path.join(experiment_dir, f"stderr.log")
