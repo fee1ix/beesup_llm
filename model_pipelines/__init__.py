@@ -104,6 +104,7 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         if LlamaPipeline.matches(pre_config): return LlamaPipeline(ref=pre_config, **kwargs)
         if MistralPipeline.matches(pre_config): return MistralPipeline(ref=pre_config, **kwargs)
+        if MistralNemoPipeline.matches(pre_config): return MistralNemoPipeline(ref=pre_config, **kwargs)
         
         return cls(ref=pre_config, **kwargs)
 
@@ -387,7 +388,7 @@ class MistralPipeline(LanguageModelPipeline):
 
     @staticmethod
     def matches(ref):
-        if getattr_or_key(ref, 'name_or_path') == 'mistralai/Mistral-7B-Instruct-v0.2': return True
+        if getattr_or_key(ref, 'name_or_path') in ['mistralai/Mistral-7B-Instruct-v0.2']: return True
         return False
 
     def __init__(self, ref=None, **kwargs):
@@ -422,6 +423,87 @@ class MistralPipeline(LanguageModelPipeline):
             allow_new_atomic_keys=False, 
             allow_new_nested_keys=False
         )
+
+class MistralNemoPipeline(LanguageModelPipeline):
+
+    @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'name_or_path') in ["mistralai/Mistral-Nemo-Instruct-2407"]: return True
+        return False
+
+    def __init__(self, ref=None, **kwargs):
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        super().__init__(ref, **kwargs)
+
+        self._default_config=dict(
+            name_or_path='mistralai/Mistral-Nemo-Instruct-2407',
+            base_model='Mistral-Nemo-Instruct-2407',
+
+            inference_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='<s>',
+            ),
+            training_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='</s>',
+            ),
+            generation_config=dict(
+                pad_token='<s>',
+            )
+        )
+
+        self._config_key_order.extend(list(self._default_config.keys()))
+        self._config_keys_to_exclude.extend([])
+        
+        self.update_config(self._default_config, overwrite_if_conflict=True)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
+
+class PhiPipeline(LanguageModelPipeline):
+
+    @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'name_or_path') in ["microsoft/Phi-3-medium-128k-instruct"]: return True
+        return False
+
+    def __init__(self, ref=None, **kwargs):
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        super().__init__(ref, **kwargs)
+
+        self._default_config=dict(
+            name_or_path='microsoft/Phi-3-medium-128k-instruct',
+            base_model='Phi-3-medium-128k-instruct',
+
+            inference_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='<s>',
+            ),
+            training_tokenizer_config=dict(
+                max_length=8192,
+                pad_token='<|endoftext|>',
+            ),
+            generation_config=dict(
+                pad_token='<s>',
+            )
+        )
+
+        self._config_key_order.extend(list(self._default_config.keys()))
+        self._config_keys_to_exclude.extend([])
+        
+        self.update_config(self._default_config, overwrite_if_conflict=True)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
+
 
 
 class EmbeddingModelPipeline(BaseModelPipeline):
