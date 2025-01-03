@@ -29,8 +29,6 @@ def has_keys(the_dict, keys, atomic_only=False):
 def has_key(the_dict, key, atomic_only=False):
     return key in get_keys(the_dict, atomic_only=atomic_only)
 
-
-
 def filter_dict_valuetypes(the_dict, valuetypes=[], invert=False):
 
     if (dict in valuetypes) and not invert: valuetypes.remove(dict)
@@ -47,7 +45,42 @@ def filter_dict_valuetypes(the_dict, valuetypes=[], invert=False):
                 
             elif isinstance(v, dict) and not invert:
                 new_dict[k] = _recursive(v)
-        
+            
+        return new_dict
+    
+    return _recursive(the_dict)
+
+def filter_dict_values(the_dict, values=[], invert=False):
+    def _recursive(the_dict):
+        new_dict = {}
+        for k, v in the_dict.items():
+            if isinstance(v, dict):
+                # Recursively filter nested dictionaries
+                filtered_subdict = _recursive(v)
+                if filtered_subdict or (v in values) ^ invert:
+                    new_dict[k] = filtered_subdict
+            elif (v in values) ^ invert:
+                # Include the value if the condition matches
+                new_dict[k] = v
+        return new_dict
+
+    return _recursive(the_dict)
+
+def filter_dict_valuepatterns(the_dict, valuepatterns=[], invert=False):
+
+    def _recursive(the_dict):
+            
+        new_dict=dict()
+        for k,v in the_dict.items():
+
+            if any([re.match(valuepattern, str(v)) for valuepattern in valuepatterns]) ^ invert:
+
+                if isinstance(v, dict):
+                    new_dict[k]=_recursive(v)
+                
+                else:
+                    new_dict[k]=v
+ 
         return new_dict
     
     return _recursive(the_dict)
