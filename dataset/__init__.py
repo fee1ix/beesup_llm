@@ -64,8 +64,10 @@ class BaseDataset(BaseDirectory):
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
         
-        
-    
+    def set_df(self, dataset_df):
+        self.dataset_df=dataset_df.copy()
+        self.dataset_df.to_pickle(f"{self._path}/dataset_df.pkl")
+
     def get_df_splits(self, splits='train'):
         if isinstance(splits, str): splits=[splits]
         return self.dataset_df[self.dataset_df.split.isin(splits)].copy()
