@@ -297,7 +297,7 @@ class ExtractionScheme4SingleObservation(BaseModel):
     behaviour: Optional[str] = None
     observed_nesting: Optional[str] = None
     collecting_method: Optional[str] = None
-    remarks: Optional[str] = None
+    #remarks: Optional[str] = None
 
     class Config:
         extra = 'ignore'
@@ -321,7 +321,7 @@ class ExtractionScheme4MultipeObservations(BaseModel):
     meta_behaviour: Optional[str] = None
     meta_observed_nesting: Optional[str] = None
     meta_collecting_method: Optional[str] = None
-    meta_remarks: Optional[str] = None
+    #meta_remarks: Optional[str] = None
     observations: List[ExtractionScheme4SingleObservation] = None
 
     class Config:
