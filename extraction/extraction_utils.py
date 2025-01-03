@@ -3,6 +3,7 @@ import json
 import copy
 import pandas as pd
 from pydantic import ValidationError
+from beesup_llm.toolkit.dict_utils import filter_dict_valuepatterns
 
 from beesup_llm.extraction import \
     ExtractionScheme4SingleObservation, \
@@ -71,6 +72,8 @@ def pydantic_parse(completion,exclude_none=True):
 
     try:
         completion_json=ExtractionScheme4MultipeObservations.parse_raw(completion).dict(exclude_none=exclude_none)
+        completion_json=filter_dict_valuepatterns(completion_json,valuepatterns=[r'^\s*$'],invert=True)
+
 
         scientific_name_in_meta = ('meta_scientific_name' in completion_json)
 
