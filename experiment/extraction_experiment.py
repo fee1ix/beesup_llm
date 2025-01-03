@@ -20,21 +20,39 @@ class PredictionCallback(TrainerCallback):
         self.name='pred_callback'
         pass
 
-    def get_pred_df(self, model):
-        pred_df=self.experiment.eval_df
-        pred_df=self.experiment.extractor_pipe(pred_df, llm_ref=model)
-        print(f"_recent_generation_config: {self.experiment.extractor_pipe.llm_pipe._recent_generation_config}")
+    def get_pred_df(self, model, eval_df=None):
+        if eval_df is None: eval_df=self.experiment.eval_df
+
+        pred_df=self.experiment.extractor_pipe(eval_df, llm_ref=model)
+        #print(f"_recent_generation_config: {self.experiment.extractor_pipe.llm_pipe._recent_generation_config}")
         return pred_df
-    
+
+    def eval_loop(self, model, eval_batch_size):
+
+        eval_df=self.experiment.eval_df
+
+        pred_dfs=[]
+        for i in range(0, len(eval_df),eval_batch_size):
+            self.experiment.logger.info(f"Evaluate Sample {i+eval_batch_size}/{len(eval_df)}")
+            pred_df=self.get_pred_df(model, eval_df.iloc[i:i+eval_batch_size].copy())
+            pred_dfs.append(pred_df)
+            
+        pred_df=pd.concat(pred_dfs)
+
+        return pred_df
+
     def save_df(self, df, global_step):
         save_path=f"{self.experiment._path}/{str(global_step).zfill(4)}_{self.name}_df.pkl"
         df.to_pickle(save_path)
         self.experiment.logger.info(f"Saved {self.name} to {save_path}")
 
+
     def on_epoch_end(self, args, state, control, **kwargs):
+        self.experiment.logger.info(f"global step: {state.global_step}")
         model=kwargs['model']
         model.eval()
-        pred_df=self.get_pred_df(model)
+
+        pred_df=self.eval_loop(model, args.per_device_eval_batch_size)
         self.save_df(pred_df, state.global_step)
 
 class ExtractionExperiment(BaseDirectory):
@@ -97,6 +115,7 @@ class ExtractionExperiment(BaseDirectory):
                     save_strategy='no',
                     eval_strategy='no',
                     do_eval=False,
+                    fp16=False,
                 ),
             ),
         )
@@ -179,13 +198,16 @@ class ExtractionExperiment(BaseDirectory):
     def evaluate_base_model(self,model):
 
         pred_callback=PredictionCallback(self)
-        pred_df=pred_callback.get_pred_df(model)
+        pred_df=pred_callback.eval_loop(model,self.trainer_config['trainer_args']['per_device_eval_batch_size'])
         pred_callback.save_df(pred_df,0)
 
     def run(self,**kwargs):
 
         self.logger.info(f"RUNNING")
         set_seeds(self.seed)
+
+        if not self.is_spawned():
+            self.spawn()
 
         if self.done:
             self.logger.info(f"Already done. Skipping.")
