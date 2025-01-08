@@ -5,12 +5,6 @@ OBSERVATION_ATTRIBUTES_DICT={
         'group':'bee',
         'suffix':' was observed'
     },
-    # 'taxon':{
-    #     'desc':'name of the author who first descriped the bee, and sometimes the respective publication year. In most cases the taxon is located rigth behind the latin designation of the bee',
-    #     'group':'bee',
-    #     'prefix':'(',
-    #     'suffix':')',
-    # },
     'date':{
         'sub_keys':['exact_date','date_range_orign', 'year_only']
     },
@@ -57,29 +51,20 @@ OBSERVATION_ATTRIBUTES_DICT={
         'prefix':'determined by',
         'suffix':'has determined'
     },
-    # 'det_literature':{
-    #     'desc':'literatur references used to determine the observation',
-    #     'group':'source',
-    #     'prefix':'determined by literature',
-    #     'suffix':'was used for determination'
-    # },
     'habitat':{
         'group':'location'
     },
     'visited_flowers':{
         'group':'location'
     },
-    'behaviour':{
-        'group':'bee'
-    },
+    # 'behaviour':{
+    #     'group':'bee'
+    # },
     'observed_nesting':{
         'group':'location'
     },
     'collecting_method':{
-    },
-    'remarks':{
-        'desc':'additional notes or observations that do not fit into the other categories',
-    },   
+    }
 }
 
 OBSERVATION_DESCRIPTIONS_DICT={k:OBSERVATION_ATTRIBUTES_DICT[k]['desc'] for k in OBSERVATION_ATTRIBUTES_DICT.keys() if 'desc' in OBSERVATION_ATTRIBUTES_DICT[k]}
@@ -108,7 +93,7 @@ kann im Frühjahr überall im Stadtgebiet beobachtet werden
 """.strip(),
         'gold_json':{
             "meta_scientific_name": "Andrena fulva (MÜLLER 1766)",
-            "meta_location": "Nordrhein-Westfalen, Bielefeld nördlich des Teutoburger Waldes",
+            "meta_location": "Nordrhein-Westfalen, Stadtgebiet Bielefeld nördlich des Teutoburger Waldes",
             "observations": 
                 [
                     {
@@ -171,7 +156,7 @@ stammen  alle  weiteren niedersächsischen Nachweise  aus  der Zeit um  1900  (T
 vor.
 """.strip(),
         'gold_json':{
-            "meta_location": "Deutschland, Niedersachsen",
+            "meta_location": "östliches Niedersachsen",
             "meta_leg": "Theunert",
             "meta_det": "Theunert",
             "observations": 
@@ -179,23 +164,23 @@ vor.
                     {
                         "scientific_name": "Andrena tarsata NYLANDER 1848",
                         "date": "3.7.2000",
-                        "location": "Ortsrand  St.  Andreasberg  (4229/3)",
+                        "location": "Ortsrand  St.  Andreasberg  (TK 4229/3)",
                         "n_females": "2"
                     },{
                         "scientific_name": "Hylaeus variegatus (FABRICIUS 1798)",
                         "date": "3.8.2002",
-                        "location": "Bahnhof Walkenried (4429/2)",
+                        "location": "Bahnhof Walkenried (TK 4429/2)",
                         "n_queens": "1"
                     },{
                         "scientific_name": "Lasioglossum costulatum (KRIECHBAUMER 1873)",   
                         "date": "6.8.2003",
-                        "location": "Heeseberg (3931/1)",
+                        "location": "Heeseberg (TK 3931/1)",
                         "n_males": "1",
                         "n_females": "2"
                     },{
                         "scientific_name": "Megachile lagopoda (LINNAEUS 1761)",
                         "date": "6.8.2003",
-                        "location": "Braunkohlentagebau Helmstedt (3732/3)",
+                        "location": "Braunkohlentagebau Helmstedt (TK 3732/3)",
                         "n_females": "3-4"
                     }
                 ]
@@ -237,7 +222,7 @@ Jahr 2014 aus Ehra-Lessien nördlich von Wolfsburg.
                     {
                         "scientific_name":"Lasioglossum costulatum (Kriechbaumer, 1873)",
                         "date": "10.9.2016",
-                        "location": "Niedersachsen, Nienhagen/Weper, [51.7132°N, 9.8013° E]",
+                        "location": "Niedersachsen, Nienhagen/Weper [51.7132° N 9.8013° E]",
                         "n_females": "1",
                         "leg": "Witt",
                         "coll": "Witt",
@@ -294,7 +279,7 @@ class ExtractionScheme4SingleObservation(BaseModel):
     det: Optional[str] = None
     habitat: Optional[str] = None
     visited_flowers: Optional[str] = None
-    behaviour: Optional[str] = None
+    #behaviour: Optional[str] = None
     observed_nesting: Optional[str] = None
     collecting_method: Optional[str] = None
     #remarks: Optional[str] = None
@@ -318,7 +303,7 @@ class ExtractionScheme4MultipeObservations(BaseModel):
     
     meta_habitat: Optional[str] = None
     meta_visited_flowers: Optional[str] = None
-    meta_behaviour: Optional[str] = None
+    #meta_behaviour: Optional[str] = None
     meta_observed_nesting: Optional[str] = None
     meta_collecting_method: Optional[str] = None
     #meta_remarks: Optional[str] = None

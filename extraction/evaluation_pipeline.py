@@ -115,7 +115,6 @@ class EvaluationPipeline(ExtractionPipeline):
         assert 'gold_completion' in df.columns, "missing 'gold_completion' column"
         assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
 
-        
         errors_df=pd.DataFrame()
         errors_df['i']=None
         for i,row in df.iterrows():
@@ -124,6 +123,8 @@ class EvaluationPipeline(ExtractionPipeline):
             
             if _errors_df.empty: continue
             _errors_df['global_step']=row.get('global_step',None)
+            _errors_df['epoch']=row.get('epoch',None)
+
             _errors_df['i']=i
             _errors_df.dropna(axis=1, how='all')
             
