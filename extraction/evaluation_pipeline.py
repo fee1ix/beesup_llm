@@ -67,17 +67,23 @@ class EvaluationSample(ExtractionSample):
     def get_errors_df(self):
 
         errors_df=self.errors_df.copy()
-        errors_df['pred_val'] = errors_df['pred_val'].astype('object')
-        errors_df['gold_val'] = errors_df['gold_val'].astype('object')
+        #errors_df['pred_val'] = errors_df['pred_val'].astype('object')
+        #errors_df['gold_val'] = errors_df['gold_val'].astype('object')
 
         #errors_df=errors_df[errors_df.is_error==True]
-        errors_df['idx']=None
-        for i,error_row in errors_df.iterrows():
-            if error_row.type in ['fp_obs', 'tp_obs']:
-                errors_df.at[i,'pred_val']=self.pred_df.iloc[int(error_row.p)].scientific_name
+        # errors_df['idx']=None
+        # for i,error_row in errors_df.iterrows():
+
+        #     if error_row.type in ['fp_obs', 'tp_obs']:
+        #         errors_df.at[i,'pred_val']=self.pred_df.iloc[int(error_row.p)].scientific_name
             
-            if error_row.type in ['fn_obs', 'tp_obs']:
-                errors_df.at[i,'gold_val']=self.gold_df.iloc[int(error_row.g)].scientific_name
+        #     if error_row.type in ['fn_obs', 'tp_obs']:
+        #         errors_df.at[i,'gold_val']=self.gold_df.iloc[int(error_row.g)].scientific_name
+
+        #     # if error_row.type in ['tp_obs']:
+        #     #     errors_df.at[i,'pred_val']=self.pred_df.iloc[int(error_row.p)].scientific_name
+        #     #     errors_df.at[i,'gold_val']=self.gold_df.iloc[int(error_row.g)].scientific_name
+
 
         return errors_df
 
@@ -120,8 +126,9 @@ class EvaluationPipeline(ExtractionPipeline):
         for i,row in df.iterrows():
             sample=EvaluationSample(**row)
             _errors_df=sample.get_errors_df()
-            
+
             if _errors_df.empty: continue
+
             _errors_df['global_step']=row.get('global_step',None)
             _errors_df['epoch']=row.get('epoch',None)
 

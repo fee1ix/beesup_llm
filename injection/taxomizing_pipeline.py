@@ -23,12 +23,28 @@ class TaxomizingPipeline(BaseDirectory):
 
         self._default_config=dict(
 
-            flattening_config=dict(
+            dist_flattening_config=dict(
+                include_leaves=False,
+                use_kneepoint=True,
+                use_std=False,
+                std_factor=1.0,
             ),
-
+            ddist_flattening_config=dict(
+                include_leaves=False,
+                use_kneepoint=True,
+                use_std=False,
+                std_factor=1.0,
+            ),
             linkage_args=dict(
                 method='ward', #single #complete #average #weighted #centroid #median #ward
                 optimal_ordering=False
+            ),
+
+            llm_config=dict(
+                generation_config=dict(
+                    max_new_tokens=4096,
+                    max_time=1200,
+                ),
             )
         )
 
@@ -36,7 +52,8 @@ class TaxomizingPipeline(BaseDirectory):
         self._config_keys_to_exclude.extend(['chunks_df','nodes_df','tree'])
 
         self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.update_config_smart(kwargs)
+        self.update_config_smart(kwargs)    
+        self.handle_flattening_config()
 
         if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
@@ -50,7 +67,24 @@ class TaxomizingPipeline(BaseDirectory):
 
         if chunks_df:
             self.chunks_df=chunks_df
-    
+
+    def process(self, chunks_df, verbose=False):
+
+        self.flattened_tree=self.get_flattened_tree(chunks_df)
+        self.embedding_tree=self.get_embedding_tree(self.flattened_tree, chunks_df, verbose=verbose)
+        self.header_tree=self.generate_headers(self.embedding_tree, chunks_df, verbose=verbose)
+        
+
+    def handle_flattening_config(self):
+
+        for flattening_config in ['dist_flattening_config', 'ddist_flattening_config']:
+
+            if getattr(self,flattening_config)['use_kneepoint'] and getattr(self,flattening_config)['use_std']:
+                raise ValueError(f"Cannot use both kneepoint and std for {flattening_config}")
+
+            # if getattr(self,flattening_config)['use_kneepoint']:
+            #     setattr(self,flattening_config, 'std_factor', None)
+        
     def load_linkage_matrix(self, chunks_df):
 
         distance_matrix = cosine_distances(np.vstack(chunks_df['emb'].values))
@@ -80,16 +114,126 @@ class TaxomizingPipeline(BaseDirectory):
 
         ### Flattening the tree: several options
 
-        threshold_dist, index = get_dist_kneepoint(tree,  include_leaves=False)
+        self.flattening_info=dict()
+        self.flattening_info['tree_before_flattening']=get_tree_info_dict(tree)
+
+        # DIST FLATTENING
+        include_leaves=self.dist_flattening_config['include_leaves']
+        if self.dist_flattening_config['use_kneepoint']:
+            threshold_dist, index = get_dist_kneepoint(tree,  include_leaves=include_leaves)
+        elif self.dist_flattening_config['use_std']:
+            threshold_dist = get_dist_std(tree, std_factor=self.dist_flattening_config['std_factor'], include_leaves=include_leaves)
+        
         tree=do_dist_flattening(tree, threshold_dist=threshold_dist)
 
+        self.flattening_info['threshold_dist']=threshold_dist
+        self.flattening_info['tree_after_dist_flattening']=get_tree_info_dict(tree)
+
+
+        # DDIST FLATTENING
         add_ddist(tree)
-        threshold_ddist, index = get_ddist_kneepoint(tree, include_leaves=False, plot=False)
+        include_leaves=self.ddist_flattening_config['include_leaves']
+        if self.ddist_flattening_config['use_kneepoint']:
+            threshold_ddist, index = get_ddist_kneepoint(tree, include_leaves=include_leaves)
+        elif self.ddist_flattening_config['use_std']:
+            threshold_ddist = get_ddist_std(tree, std_factor=self.ddist_flattening_config['std_factor'], include_leaves=include_leaves)
+
         tree=do_ddist_flattening(tree, threshold_ddist=threshold_ddist)
+        self.flattening_info['threshold_ddist']=threshold_ddist
+        self.flattening_info['tree_after_ddist_flattening']=get_tree_info_dict(tree)
 
         tree=recover_leaf_parents(tree)
+        self.flattening_info['tree_after_recover_leaf_parents']=get_tree_info_dict(tree)
 
-        return tree   
+
+        for node in PreOrderIter(tree):
+            if not hasattr(node,'is_chunk'):
+                if node.is_leaf: node.__setattr__('is_chunk',True)
+                else: node.__setattr__('is_chunk',False)
+                print(node.name, end=', ')
+
+        if self.is_spawned():
+            set_config(self.get_config(),path=self._path)
+            with open(f"{self._path}/flattened_tree.pkl", "wb") as f: pickle.dump(tree, f)
+
+        return tree
+    
+    def get_embedding_tree(self, flattened_tree, chunks_df, verbose=False):
+
+        propagate_emb_from_leaves(flattened_tree)
+        tree = add_order_idc(flattened_tree, chunks_df, verbose=verbose)
+
+        # CHECK if all chunks are included in the tree
+        chunks_df['node_id']=None
+        for node in PreOrderIter(tree):
+            if node.is_leaf: continue
+            if all([d.is_leaf for d in node.children]):
+                chunks_df.loc[node.include_chunk_idc,'node_id']=node.name
+        self.logger.info(f"all chunks included in the tree: {len(chunks_df[chunks_df['node_id'].isna()])==0}")
+
+        # TEST IF EXCLUDE and INCLUDE CHUNKS ARE DISJOINT
+        for node in PreOrderIter(tree):
+            if node.is_leaf: continue
+            
+            include_chunk_idc=set(node.include_chunk_idc)
+            exclude_chunk_idc=set(node.exclude_chunk_idc)
+
+            intersection=include_chunk_idc.intersection(exclude_chunk_idc)
+            if len(intersection)>0:
+                self.logger.warning(f"Node {node.name} has overlapping include and exclude chunks: {intersection}")
+
+        if self.is_spawned():
+            with open(f"{self._path}/embedding_tree.pkl", "wb") as f:
+                pickle.dump(tree, f)
+            chunks_df.to_pickle(f"{self._path}/chunks_df.pkl")
+        
+        return tree
+    
+    def generate_headers(self, embedding_tree=None, chunks_df=None, verbose=False):
+
+        if (not embedding_tree) and self.is_spawned():
+            with open(f"{self._path}/embedding_tree.pkl", "rb") as f:
+                embedding_tree=pickle.load(f)
+        
+        if (not isinstance(chunks_df,pd.DataFrame)) and self.is_spawned():
+            chunks_df=pd.read_pickle(f"{self._path}/chunks_df.pkl")
+
+        tree = reset_headers(embedding_tree)
+
+        self.llm_pipe.prepare_inference()
+
+        if verbose: print(f"[{tree.name}] {tree.header}")
+
+        for pre, fill, node in RenderTree(tree):
+            if node.is_leaf: continue
+            if node.is_root: continue
+            prompt=get_header_prompt(node, tree, chunks_df)
+            header=self.llm_pipe(prompt,use_chatformat=True, stop_strings=['\n'], max_new_tokens=100)[0]['generated_text']
+            header=clean_header(header)
+            node.__setattr__('header',header)
+
+            if verbose: print(f"{pre} [{node.name}] {node.header}")
+
+        if self.is_spawned():
+            with open(f"{self._path}/header_tree.pkl", "wb") as f:
+                pickle.dump(tree, f)
+        
+        return tree
+
+        
+
+    
+
+
+        
+        
+
+
+
+    
+
+
+    
 
 
 

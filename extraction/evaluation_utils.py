@@ -5,6 +5,7 @@ import torch
 import difflib
 
 import pandas as pd
+import numpy as np
 from rapidfuzz import fuzz
 from functools import reduce
 
@@ -86,7 +87,6 @@ def cross_match(gold_df,pred_df):
     match_df['mean_score']=match_df[[k for k in match_df.columns if k.endswith('_score')]].mean(axis=1)
 
     return match_df
-
 
 def get_match(gold_df,pred_df):
 
@@ -270,8 +270,7 @@ def get_errors(match_df,gold_df,pred_df):
             elif pd.notna(gold_val) & pd.isna(_pred_val):
                 error_type='fn_val'
 
-                
-            if (g==0) & (p==0): k=f'meta_{k}'
+            if has_meta_row & (g==0) & (p==0): k=f'meta_{k}'
 
             error_row={
                 'm':m,
@@ -291,14 +290,21 @@ def get_errors(match_df,gold_df,pred_df):
     #true positives observations
     for i,tp_row in match_df.iterrows():
         if i==0: continue
+
+        attrs_fuzzy_scores=[v for k,v in tp_row.items() if (k.endswith('_score') and k!='mean_score')]
+        attrs_fuzzy_scores=[1.0 if np.isnan(x) else x for x in attrs_fuzzy_scores]
+        fuzzy_score=np.mean(attrs_fuzzy_scores)
+
         error_row={
             'm':i,
             'g':tp_row['g'],
             'p':tp_row['p'],
             'key':'observations',
-            'fuzzy_score':1.0,
+            'fuzzy_score':fuzzy_score,
+            'gold_val': gold_df.loc[tp_row['g']].to_dict(),
+            'pred_val': pred_df.loc[tp_row['p']].to_dict(),
             'type': 'tp_obs',
-            'is_error':False
+            'is_error':(fuzzy_score<1.0)
         }
         error_data.append(error_row)
 
@@ -311,10 +317,28 @@ def get_errors(match_df,gold_df,pred_df):
             'p':fp_row.name,
             'key':'observations',
             'fuzzy_score':0.0,
+            'pred_val': pred_df.loc[fp_row.name].to_dict(),
             'type': 'fp_obs',
             'is_error':True
         }
         error_data.append(error_row)
+
+        for k,v in pred_df.loc[fp_row.name].to_dict().items():
+            if pd.isna(v): continue
+
+            error_row={
+                'm':None,
+                'g':None,
+                'p':fp_row.name,
+                'key':k,
+                'fuzzy_score':0.0,
+                'pred_val': v,
+                'type': 'fp_obs:fp_val',
+                'is_error':True
+            }
+
+            error_data.append(error_row)
+
     
 
     #false negative observations
@@ -327,10 +351,27 @@ def get_errors(match_df,gold_df,pred_df):
             'p':None,
             'key':'observations',
             'fuzzy_score':0.0,
+            'gold_val': gold_df.loc[fn_row.name].to_dict(),
             'type': 'fn_obs',
             'is_error':True
         }
         error_data.append(error_row)
+
+        for k,v in gold_df.loc[fn_row.name].to_dict().items():
+            if pd.isna(v): continue
+
+            error_row={
+                'm':None,
+                'g':fn_row.name,
+                'p':None,
+                'key':k,
+                'fuzzy_score':0.0,
+                'pred_val': v,
+                'type': 'fn_obs:fn_val',
+                'is_error':True
+            }
+
+            error_data.append(error_row)
 
     col_order=["m","g","p","key","fuzzy_score","gold_val","pred_val","type","is_error"]
     errors_df=pd.DataFrame(error_data,columns=col_order)
@@ -446,6 +487,8 @@ def get_char_highlighting(plain_text,errors_df,col='pred'):
     last_i1=0
 
     errors_df=errors_df[errors_df.is_error]
+    errors_df=errors_df[errors_df.type.isin(['tp_val','fp_val','fn_val','tp_obs','fp_obs','fn_obs'])]
+
     for _,error_row in errors_df.sort_values(by=f"{col}_span").iterrows():
 
         color=error_highlight_colors[error_row['type']]
@@ -662,11 +705,11 @@ def get_conf_dict(errors_df):
     #OBSERVATIONS
     selected_df=errors_df[errors_df.key=='observations']
     conf_dict['obs']={
-        'tp':len(selected_df[selected_df.type.isin(['tp_obs'])]),
-        #'tp_fuzzy':selected_df[selected_df.type.isin(['tp_obs'])]['fuzzy_score'].sum(),
-        'fp':len(selected_df[selected_df.type.isin(['fp_obs'])]),
-        'fn':len(selected_df[selected_df.type.isin(['fn_obs'])]),
-        'tn':len(selected_df[selected_df.type.isin(['tn_obs'])]),
+        'tp':len(selected_df[selected_df['type'].isin(['tp_obs'])]),
+        #'tp_fuzzy': selected_df[selected_df['type'].isin(['tp_obs'])]['fuzzy_score'].sum(),
+        'fp':len(selected_df[selected_df['type'].isin(['fp_obs'])]),
+        'fn':len(selected_df[selected_df['type'].isin(['fn_obs'])]),
+        'tn':len(selected_df[selected_df['type'].isin(['tn_obs'])]),
     }
 
     #META ATTRIBUTES

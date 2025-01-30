@@ -404,7 +404,6 @@ def do_ddist_flattening(tree, threshold_ddist=None):
     return tree
 
 
-
 def recover_leaf_parents(tree):
 
     used_ids=[n.name for n in PreOrderIter(tree)]
@@ -441,3 +440,177 @@ def recover_leaf_parents(tree):
 
     logging.info(get_tree_info_dict(tree))
     return tree
+
+
+# ORDERING THE CHUNKS
+def ranking_order(df, start_idx=0, verbose=False):
+    return df.sort_values(by='score',ascending=False)
+
+from sklearn.metrics.pairwise import cosine_similarity
+def diverse_order(df, start_idx=0, verbose=False):
+
+    embs=np.vstack(df['emb'].values)
+
+    # Precompute the cosine similarity matrix
+    cos_sim_matrix = cosine_similarity(embs)
+    np.fill_diagonal(cos_sim_matrix, 1)  # Avoid self-matching
+
+    match_mask = np.ones(embs.shape[0], dtype=bool)
+    idc_order = [start_idx]
+    match_mask[start_idx] = False
+
+    while np.any(match_mask):
+        # Compute similarity for remaining elements
+        similarities = cos_sim_matrix[:, idc_order].mean(axis=1)
+        similarities[~match_mask] = 1  # Ignore already selected indices
+        
+        # Find the next index with the lowest similarity
+        min_idx = np.argmin(similarities)
+        
+        match_mask[min_idx] = False
+        idc_order.append(min_idx)
+        if verbose:
+            print(f"{len(idc_order)}/{len(embs)}\tscore: {similarities[min_idx]}"+20*' ', end='\r')
+    
+    diverse_order.idc_order=idc_order
+    
+    idc_order=[idc_order[0]]+idc_order[1:][::-1]
+    
+    return df.iloc[idc_order]
+
+def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
+
+    chunk_embs=np.vstack(chunks_df['emb'].values)
+    header_embs=np.vstack([n.emb for n in PreOrderIter(tree) if not n.is_leaf])
+    match_matrix=cosine_similarity(header_embs,chunk_embs)
+
+    i=0
+    for node in PreOrderIter(tree):
+        if node.is_leaf: continue
+
+        node.__setattr__("include_chunk_idc",[])
+        node.__setattr__("exclude_chunk_idc",[])
+
+        if node.is_root: continue
+        if verbose:
+            print(f"{i+1}/{header_embs.shape[0]}"+30*" ")
+        
+
+        include_chunk_mask=np.zeros(len(chunks_df), dtype=bool)
+        include_chunk_mask[[n.name for n in node.leaves]]=True
+
+        if node.siblings:
+            exclude_chunk_mask = np.zeros(len(chunks_df), dtype=bool)
+            exclude_chunk_mask[[n.name for s in node.siblings for n in s.leaves]] = True
+
+        ranking_df=chunks_df.copy()
+        ranking_df['score']=match_matrix[i]
+
+        include_chunks_df=ranking_df[include_chunk_mask].copy()
+
+        include_chunks_df=order_fn(include_chunks_df, start_idx=include_chunks_df.score.argmax(), verbose=verbose)
+
+        node.include_chunk_idc=include_chunks_df.index.to_list()
+
+        if node.siblings:
+            exclude_chunks_df=ranking_df[exclude_chunk_mask].copy()
+
+            exclude_chunks_df=order_fn(exclude_chunks_df, start_idx=exclude_chunks_df.score.argmax(), verbose=verbose)
+            node.exclude_chunk_idc=exclude_chunks_df.index.to_list()
+
+        i+=1
+    
+    return tree
+
+
+# GENERATE HEADERS
+
+def reset_headers(tree):
+    for node in PreOrderIter(tree):
+        if node.is_leaf: continue
+        node.__setattr__('header',"<unknown section header>")
+    tree.__setattr__('header', "Wildbienen")
+
+    return tree
+
+def clean_header(header):
+    header=header.strip()
+    header=header.replace('"','')
+    header=header.replace('#','')
+    return header
+
+def get_headerpath_until(the_node, tree):
+    ancestor_ids=[n.name for n in the_node.ancestors]
+    headerpath=[]
+    for node in PreOrderIter(tree):
+        if node.name not in ancestor_ids: continue
+        if node.is_leaf: continue
+        headerpath.append(node.header)
+    
+    return headerpath
+
+def get_chunk_text(chunk_row):
+    #chunk_template="{subject}\t{predicate}\t{object}"
+    chunk_template="{predicate}: {object}"
+
+    chunk_text=chunk_template.format(**chunk_row)
+    chunk_text=re.sub(r'\n+', '; ', chunk_text)
+
+    return chunk_text
+
+def get_header_prompt(node, tree, chunks_df):
+    
+    headerpath=" > ".join(get_headerpath_until(node, tree))+" > here"
+
+    prompt=""
+    prompt+=f"""
+Actually we are inside a section belonging to table of contents. Our header path up to here is: {headerpath}
+
+Your task now is to make up a concise meaningful header for the section we are currently in.
+""".strip()
+    prompt+="\n\n"
+    prompt+=f"""
+GIVEN:
+- samples of content that is explicitly included in the section we are currently in
+- samples of content that is explicitly excluded from the section we are in because it belongs to sibling sections
+
+TASK:
+- carefully read the given samples and understand what topic areas are included, and what are excluded
+- what makes the difference between the included and excluded content?
+- make up a precise meaningful title that best describes the essence of the included content against the excluded content
+- don't explain your solution, just answer with a precise meaningful title
+""".strip()
+    
+    prompt+=f"\n\n\nINCLUDED CHUNKS (focus of the current section):\n"
+    included_chunks_df=chunks_df.loc[node.include_chunk_idc].copy()
+    included_chunks_df['chunk_text']=included_chunks_df.apply(get_chunk_text, axis=1)
+    included_chunks_df=included_chunks_df.drop_duplicates(subset='chunk_text')
+
+    chars, max_chars =0, 10000
+    for i,chunk_row in included_chunks_df.iterrows():
+        line=chunk_row.chunk_text+' | '
+        prompt+=line
+        chars+=len(line)
+        if chars>max_chars: break
+
+
+    prompt+=f"\n\n\nEXCLUDED CHUNKS (sibling sections to distinguish scope):\n"
+    excluded_chunks_df=chunks_df.loc[node.exclude_chunk_idc].copy()
+    excluded_chunks_df['chunk_text']=excluded_chunks_df.apply(get_chunk_text, axis=1)
+    excluded_chunks_df=excluded_chunks_df.drop_duplicates(subset='chunk_text')
+
+    chars, max_chars= 0, 10000
+    for i,chunk_row in excluded_chunks_df.iterrows():
+        line=chunk_row.chunk_text+' | '
+        prompt+=line
+        chars+=len(line)
+        if chars>max_chars: break
+
+    # prompt+="\n\nCONTEXT:\n"
+    # md_headers=mardownify_headerpath(get_headerpath_until(node, tree))
+    # prompt+=md_headers
+
+    prompt+="\n\n\nCONCISE MEANINGFUL TITLE:\n"
+
+    return prompt
+
