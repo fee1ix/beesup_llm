@@ -65,10 +65,40 @@ class TaxomizingPipeline(BaseDirectory):
             self.dataset=BaseDataset.from_ref(dataset_ref)
             self.update_config(dict(dataset_config=self.dataset.get_config()), overwrite_if_conflict=False)
 
-        if chunks_df:
+        # load stored data if exists
+        if self.is_spawned(): self.load()
+
+        if isinstance(chunks_df, pd.DataFrame):
             self.chunks_df=chunks_df
 
-    def process(self, chunks_df, verbose=False):
+
+    def load(self):
+
+        if os.path.exists(f"{self._path}/flattened_tree.pkl"):
+            with open(f"{self._path}/flattened_tree.pkl", "rb") as f:
+                self.flattened_tree=pickle.load(f)
+            self.logger.debug(f"Loaded flattened_tree from {self._path}/flattened_tree.pkl")
+
+        if os.path.exists(f"{self._path}/embedding_tree.pkl"):
+            with open(f"{self._path}/embedding_tree.pkl", "rb") as f:
+                self.embedding_tree=pickle.load(f)
+            self.logger.debug(f"Loaded embedding_tree from {self._path}/embedding_tree.pkl")
+        
+        if os.path.exists(f"{self._path}/header_tree.pkl"):
+            with open(f"{self._path}/header_tree.pkl", "rb") as f:
+                self.header_tree=pickle.load(f)
+            self.logger.debug(f"Loaded header_tree from {self._path}/header_tree.pkl")
+        
+        if os.path.exists(f"{self._path}/chunks_df.pkl"):
+            self.chunks_df=pd.read_pickle(f"{self._path}/chunks_df.pkl")
+            self.logger.debug(f"Loaded chunks_df from {self._path}/chunks_df.pkl")
+
+    def process(self, chunks_df=None, verbose=False):
+
+        if isinstance(chunks_df, pd.DataFrame): self.chunks_df=chunks_df
+        if not hasattr(self, 'chunks_df'): self.logger.warning("No chunks_df provided")
+        
+        chunks_df=self.chunks_df
 
         self.flattened_tree=self.get_flattened_tree(chunks_df)
         self.embedding_tree=self.get_embedding_tree(self.flattened_tree, chunks_df, verbose=verbose)
@@ -76,9 +106,7 @@ class TaxomizingPipeline(BaseDirectory):
         
 
     def handle_flattening_config(self):
-
         for flattening_config in ['dist_flattening_config', 'ddist_flattening_config']:
-
             if getattr(self,flattening_config)['use_kneepoint'] and getattr(self,flattening_config)['use_std']:
                 raise ValueError(f"Cannot use both kneepoint and std for {flattening_config}")
 
@@ -113,7 +141,6 @@ class TaxomizingPipeline(BaseDirectory):
         tree=linkage_to_btree(linkage_matrix, chunks_df)
 
         ### Flattening the tree: several options
-
         self.flattening_info=dict()
         self.flattening_info['tree_before_flattening']=get_tree_info_dict(tree)
 
@@ -128,7 +155,6 @@ class TaxomizingPipeline(BaseDirectory):
 
         self.flattening_info['threshold_dist']=threshold_dist
         self.flattening_info['tree_after_dist_flattening']=get_tree_info_dict(tree)
-
 
         # DDIST FLATTENING
         add_ddist(tree)

@@ -257,7 +257,7 @@ def get_dist_kneepoint(tree, include_leaves=True, plot=False):
         plt.grid(True)
         plt.show()
 
-    return knee_dist, knee_index
+    return float(knee_dist), knee_index
 
 def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
 
@@ -282,7 +282,7 @@ def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
         plt.grid(True)
         plt.show()
     
-    return threshold_dist, threshold_index
+    return float(threshold_dist), threshold_index
 
 def get_dist_sorted_nodes(tree):
     #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
@@ -335,7 +335,7 @@ def get_ddist_kneepoint(tree, include_leaves=True, plot=False):
         plt.grid(True)
         plt.show()
 
-    return knee_ddist, knee_index
+    return float(knee_ddist), knee_index
 
 def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
 
@@ -360,7 +360,7 @@ def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
         plt.grid(True)
         plt.show()
     
-    return threshold_ddist, threshold_index
+    return float(threshold_ddist), threshold_index
 
 def get_ddist_sorted_nodes(tree):
     #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
@@ -470,7 +470,7 @@ def diverse_order(df, start_idx=0, verbose=False):
         match_mask[min_idx] = False
         idc_order.append(min_idx)
         if verbose:
-            print(f"{len(idc_order)}/{len(embs)}\tscore: {similarities[min_idx]}"+20*' ', end='\r')
+            print(f"{len(idc_order)}/{len(embs)}\tscore: {similarities[min_idx]}"+40*' ', end='\r')
     
     diverse_order.idc_order=idc_order
     
@@ -493,7 +493,7 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
 
         if node.is_root: continue
         if verbose:
-            print(f"{i+1}/{header_embs.shape[0]}"+30*" ")
+            print(f"{i+1}/{header_embs.shape[0]}"+40*" ")
         
 
         include_chunk_mask=np.zeros(len(chunks_df), dtype=bool)
@@ -523,8 +523,7 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
     return tree
 
 
-# GENERATE HEADERS
-
+# GENERATE HEADERS UTILITY
 def reset_headers(tree):
     for node in PreOrderIter(tree):
         if node.is_leaf: continue
@@ -614,3 +613,40 @@ TASK:
 
     return prompt
 
+
+# FURTHER TREE UTILITY
+def get_node(node_id, tree):
+    for node in PreOrderIter(tree):
+        if node.name==node_id:
+            return copy.deepcopy(node)
+
+def get_tree_until(the_node, tree):
+    new_tree=copy.deepcopy(tree)
+
+    do_detach=False
+    for node in PreOrderIter(new_tree):
+        if (node.name == the_node.name):
+            do_detach=True
+
+        elif do_detach: 
+            node.parent=None
+
+    return new_tree
+
+def get_tree_branch_until(the_node, tree):
+    new_tree=copy.deepcopy(tree)
+    ancestor_ids=[n.name for n in the_node.ancestors]
+
+    for node in PreOrderIter(new_tree):
+        if node.name in ancestor_ids: continue
+        if node.name == the_node.name: continue
+        node.parent=None
+
+    return new_tree
+
+def get_table_of_contents(tree):
+    table_of_contents=""
+    for pre, fill, node in RenderTree(tree):
+        if node.is_chunk: continue
+        table_of_contents+=f"{pre} {node.header}\n"
+    return table_of_contents
