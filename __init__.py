@@ -248,6 +248,8 @@ class BaseDirectory(object):
         further_items=self.__dict__
         further_items=filter_dict_valuetypes(further_items,valuetypes=[str,int,float,bool,dict,list,tuple,set,type(None)])
         further_items=filter_dict_keypatterns(further_items, [r'^_'], invert=True)
+        further_items=filter_dict_keylist(further_items, self._config_keys_to_exclude, invert=True)
+
         config.update(further_items)
 
         return config

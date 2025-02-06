@@ -546,6 +546,9 @@ def get_headerpath_until(the_node, tree):
         if node.is_leaf: continue
         headerpath.append(node.header)
     
+    if hasattr(the_node,'header'):
+        headerpath.append(the_node.header)
+    
     return headerpath
 
 def get_chunk_text(chunk_row):

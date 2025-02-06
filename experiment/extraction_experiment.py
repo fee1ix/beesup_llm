@@ -55,6 +55,8 @@ class PredictionCallback(TrainerCallback):
         pred_df=self.eval_loop(model, args.per_device_eval_batch_size)
         self.save_df(pred_df, state.global_step)
 
+
+
 class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
 

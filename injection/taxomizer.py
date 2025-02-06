@@ -1,6 +1,6 @@
 from beesup_llm import *
 from beesup_llm.toolkit.setup_utils import *
-from beesup_llm.injection.taxomizing_utils import *
+from beesup_llm.injection.taxomizer_utils import *
 
 from beesup_llm.dataset import *
 from beesup_llm.model_pipelines import *
@@ -15,8 +15,8 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
 
 
-class TaxomizingPipeline(BaseDirectory):
-    type='taxomizing_pipeline'
+class Taxomizer(BaseDirectory):
+    type='taxomizer'
 
     def __init__(self, ref=None, dataset_ref=None, llm_ref=None, chunks_df=None, **kwargs):
         super().__init__(ref, **kwargs)
@@ -95,6 +95,7 @@ class TaxomizingPipeline(BaseDirectory):
 
     def process(self, chunks_df=None, verbose=False):
 
+        if not self.is_spawned(): raise ValueError("Cannot process without spawning")
         if isinstance(chunks_df, pd.DataFrame): self.chunks_df=chunks_df
         if not hasattr(self, 'chunks_df'): self.logger.warning("No chunks_df provided")
         

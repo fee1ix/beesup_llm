@@ -85,6 +85,8 @@ def prepare_sample_for_chat_finetuning(the_input, tokenizer):
 
 
 
+
+
 def to_outputs_df(generation_outputs, tokenizer=None):
     if tokenizer is not None:
         min_id, max_id=min(tokenizer.vocab.values()), max(tokenizer.vocab.values())

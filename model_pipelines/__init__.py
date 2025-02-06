@@ -339,7 +339,6 @@ class LanguageModelPipeline(BaseModelPipeline):
         else:
             return self.get_pipeline_output(the_input, **kwargs)
         
-
 class LlamaPipeline(LanguageModelPipeline):
 
     @staticmethod
