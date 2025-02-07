@@ -21,11 +21,11 @@ class EvaluationCallback(TrainerCallback):
     def __init__(self, eval_pipe, experiment):
         self.eval_pipe=eval_pipe
         self.experiment=experiment
-        self.name=f"{eval_pipe.subtype}_eval_callback"
+        self.name=f"{eval_pipe.subtype}{eval_pipe.id}_eval_callback"
     
     def save_eval_df(self, eval_df, global_step):
 
-        save_path=f"{self.experiment._path}/{str(global_step).zfill(4)}_{self.name}{self.id}_df.pkl"
+        save_path=f"{self.experiment._path}/{str(global_step).zfill(4)}_{self.name}_df.pkl"
 
         eval_df.to_pickle(save_path)
         self.experiment.logger.info(f"Saved {self.name} to {save_path}")
@@ -138,7 +138,7 @@ class InjectionExperiment(BaseDirectory):
             self.trainer_config=self.trainwrap.get_config()
         
         if eval_refs:
-            self.eval_pipes=[BaseEvaluator.from_ref(eval_ref) for eval_ref in eval_refs]
+            self.eval_pipes=[Evaluator.from_ref(eval_ref) for eval_ref in eval_refs]
             self.eval_configs=[pipe.get_config() for pipe in self.eval_pipes]
 
     def load_data(self, **kwargs):

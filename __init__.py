@@ -255,6 +255,7 @@ class BaseDirectory(object):
 
     def spawn(self):
         self.spawn_config()
+        logging.info(f"{self.name.upper()} spawned at {self._path}")
 
     def __repr__(self):
         return f"{self.name} {type(self)}"
