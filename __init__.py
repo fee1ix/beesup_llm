@@ -5,9 +5,6 @@ from .toolkit import *
 from .toolkit.system import *
 from .toolkit.dict_utils import *
 from .toolkit.setup_utils import *
-
-
-
 # from beesup_llm.dataset import BaseDataset
 # from beesup_llm.training import BaseTraining
 # from beesup_llm.inference import BaseTest
@@ -66,10 +63,13 @@ class BaseDirectory(object):
             for keypath in keypaths:
                 if keypath == 'path': continue
 
+                logging.debug(f"id: {id}\tkeypath: {keypath}")
+
                 value=None
                 keypath_list=split_keypath(keypath)
 
                 if keypath in config_dict.keys():
+
                     value=config_dict[keypath]
 
                 elif len(keypath_list)==1:
@@ -80,7 +80,6 @@ class BaseDirectory(object):
 
                     elif len(ambiguous_keypaths)>1:
 
-
                         ambiguous_values=[]
                         for ambiguous_keypath in ambiguous_keypaths:
                             ambiguous_values.append(get_dict_value_from_keypath(config_dict, ambiguous_keypath))
@@ -90,8 +89,8 @@ class BaseDirectory(object):
                         else:
                             logging.warning(f"Multiple values found for '{keypath}' in config_dict: {ambiguous_values}")
 
-                else:
-                    value=get_value_from_keypath(config_dict, keypath_list)
+                elif has_keypath(config_dict, keypath_list):
+                    value=get_dict_value_from_keypath(config_dict, keypath_list)
 
 
                 if value is not None:

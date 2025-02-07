@@ -17,18 +17,18 @@ class BaseDataset(BaseDirectory):
 
         pre_config = get_config_from_ref(ref, **kwargs)
 
-        #if hasattr(ref,'dataset_df'): kwargs['dataset_df']=ref.dataset_df
+        #if hasattr(ref,'df'): kwargs['df']=ref.df
 
         return cls(ref=pre_config, **kwargs)
 
     @classmethod
-    def from_df(cls, dataset_df, **kwargs):
+    def from_df(cls, df, **kwargs):
         kwargs.update(get_cls_attrs(cls))
-        cls.logger.debug(f"{cls} dataset_df={dataset_df}, kwargs = {kwargs}\n")
+        cls.logger.debug(f"{cls} df={df}, kwargs = {kwargs}\n")
 
-        return cls(dataset_df=dataset_df, **kwargs)
+        return cls(df=df, **kwargs)
 
-    def __init__(self, ref=None, dataset_df=None, emb_model_ref=None, parent_ref=None, **kwargs):
+    def __init__(self, ref=None, df=None, emb_model_ref=None, parent_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
@@ -48,12 +48,16 @@ class BaseDataset(BaseDirectory):
             allow_new_nested_keys=False
         )
 
+        if os.path.exists(f'{self._path}/df.pkl'):
+            self.df=pd.read_pickle(f'{self._path}/df.pkl')
+            if df is not None: raise ValueError("df already exists")
+        
         if os.path.exists(f'{self._path}/dataset_df.pkl'):
-            self.dataset_df=pd.read_pickle(f'{self._path}/dataset_df.pkl')
-            if dataset_df is not None: raise ValueError("dataset_df already exists")
+            self.df=pd.read_pickle(f'{self._path}/dataset_df.pkl')
+            if df is not None: raise ValueError("dataset_df already exists")
 
-        elif dataset_df is not None:
-            self.dataset_df=dataset_df
+        elif df is not None:
+            self.df=df
 
         if emb_model_ref is not None:
             from beesup_llm.model import EmbModelWrap
@@ -64,22 +68,24 @@ class BaseDataset(BaseDirectory):
             if 'parent_config' in parent_config: del parent_config['parent_config']
             self.parent_config=parent_config
         
-    def set_df(self, dataset_df):
-        self.dataset_df=dataset_df.copy()
-        self.dataset_df.to_pickle(f"{self._path}/dataset_df.pkl")
+    def set_df(self, df=None):
+        if isinstance(df, pd.DataFrame):
+            self.df=df.copy()
+        
+        self.df.reset_index(drop=True, inplace=True)
+        self.n_rows=len(self.df)
+        self.df.to_pickle(f"{self._path}/df.pkl")
 
     def get_df_splits(self, splits='train'):
         if isinstance(splits, str): splits=[splits]
-        return self.dataset_df[self.dataset_df.split.isin(splits)].copy()
+        return self.df[self.df.split.isin(splits)].copy()
 
     def spawn(self):
-        assert hasattr(self, 'dataset_df'), "Dataset must be assigned before spawning"
-        assert isinstance(self.dataset_df, pd.DataFrame), "Dataset must be a pandas DataFrame."
+        assert hasattr(self, 'df'), "Dataset must be assigned before spawning"
+        assert isinstance(self.df, pd.DataFrame), "Dataset must be a pandas DataFrame."
 
         self.spawn_config()
-
-        self.dataset_df.reset_index(drop=True, inplace=True)
-        self.dataset_df.to_pickle(f"{self._path}/dataset_df.pkl")
+        self.set_df(self.df)
 
         logging.info(f"{self.name.upper()} spawned at {self._path}")
   
@@ -133,32 +139,32 @@ class BaseDataset(BaseDirectory):
         return {**inputs}
         #return {'text':input_text,**inputs}
 
-    def arrange(self, tokenizer, dataset_df=None):
+    def arrange(self, tokenizer, df=None):
 
         if not hasattr(tokenizer, 'apply_chat_template'):
             raise AttributeError("The tokenizer does not have the method 'apply_chat_template'")
 
-        if dataset_df is None:
-            dataset_df=self.dataset_df.copy()
+        if df is None:
+            df=self.df.copy()
 
 
         self.logger.info(f"{self.name.upper()} START")
 
         for required_col in ['prompt','gold_completion','prompt_messages','gold_message']:
-            if required_col not in dataset_df.columns:
-                dataset_df[required_col]=None
+            if required_col not in df.columns:
+                df[required_col]=None
 
         train_ds,eval_ds,test_ds=None,None,None
 
-        if 'train' in dataset_df['split'].values:
-            train_ds=Dataset.from_list(dataset_df[dataset_df.split=='train'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+        if 'train' in df['split'].values:
+            train_ds=Dataset.from_list(df[df.split=='train'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
 
-        if 'eval' in dataset_df['split'].values:
-            eval_ds=Dataset.from_list(dataset_df[dataset_df.split=='eval'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
-            #test_ds=Dataset.from_list(dataset_df[dataset_df.split=='eval'].apply(arrange_sample,axis=1).to_list()[:2])
+        if 'eval' in df['split'].values:
+            eval_ds=Dataset.from_list(df[df.split=='eval'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+            #test_ds=Dataset.from_list(df[df.split=='eval'].apply(arrange_sample,axis=1).to_list()[:2])
 
-        if 'test' in dataset_df['split'].values:
-            test_ds=Dataset.from_list(dataset_df[dataset_df.split=='test'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
+        if 'test' in df['split'].values:
+            test_ds=Dataset.from_list(df[df.split=='test'].apply(lambda x: self.arrange_sample(x, tokenizer),axis=1).to_list())
         
         if train_ds: self.logger.info(f'train_ds: {len(train_ds)} samples')
         if eval_ds: self.logger.info(f'eval_ds: {len(eval_ds)} samples')

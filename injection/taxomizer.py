@@ -5,10 +5,8 @@ from beesup_llm.injection.taxomizer_utils import *
 from beesup_llm.dataset import *
 from beesup_llm.model_pipelines import *
 
-
 import pickle
 import pandas as pd
-
 
 from sklearn.metrics.pairwise import cosine_distances
 from scipy.cluster.hierarchy import linkage, dendrogram
@@ -18,7 +16,7 @@ from scipy.spatial.distance import squareform
 class Taxomizer(BaseDirectory):
     type='taxomizer'
 
-    def __init__(self, ref=None, dataset_ref=None, llm_ref=None, chunks_df=None, **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, llm_ref=None, df=None, **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
@@ -49,7 +47,7 @@ class Taxomizer(BaseDirectory):
         )
 
         self._config_key_order.extend(list(self._default_config.keys()))
-        self._config_keys_to_exclude.extend(['chunks_df','nodes_df','tree'])
+        self._config_keys_to_exclude.extend(['df','nodes_df','tree'])
 
         self.update_config(self._default_config, overwrite_if_conflict=False)
         self.update_config_smart(kwargs)    
@@ -68,9 +66,8 @@ class Taxomizer(BaseDirectory):
         # load stored data if exists
         if self.is_spawned(): self.load()
 
-        if isinstance(chunks_df, pd.DataFrame):
-            self.chunks_df=chunks_df
-
+        if isinstance(df, pd.DataFrame):
+            self.df=df
 
     def load(self):
 
@@ -89,23 +86,22 @@ class Taxomizer(BaseDirectory):
                 self.header_tree=pickle.load(f)
             self.logger.debug(f"Loaded header_tree from {self._path}/header_tree.pkl")
         
-        if os.path.exists(f"{self._path}/chunks_df.pkl"):
-            self.chunks_df=pd.read_pickle(f"{self._path}/chunks_df.pkl")
-            self.logger.debug(f"Loaded chunks_df from {self._path}/chunks_df.pkl")
+        if os.path.exists(f"{self._path}/df.pkl"):
+            self.df=pd.read_pickle(f"{self._path}/df.pkl")
+            self.logger.debug(f"Loaded df from {self._path}/df.pkl")
 
-    def process(self, chunks_df=None, verbose=False):
+    def process(self, df=None, verbose=False):
 
         if not self.is_spawned(): raise ValueError("Cannot process without spawning")
-        if isinstance(chunks_df, pd.DataFrame): self.chunks_df=chunks_df
-        if not hasattr(self, 'chunks_df'): self.logger.warning("No chunks_df provided")
+        if isinstance(df, pd.DataFrame): self.df=df
+        if not hasattr(self, 'df'): self.logger.warning("No df provided")
         
-        chunks_df=self.chunks_df
+        df=self.df
 
-        self.flattened_tree=self.get_flattened_tree(chunks_df)
-        self.embedding_tree=self.get_embedding_tree(self.flattened_tree, chunks_df, verbose=verbose)
-        self.header_tree=self.generate_headers(self.embedding_tree, chunks_df, verbose=verbose)
+        self.flattened_tree=self.get_flattened_tree(df)
+        self.embedding_tree=self.get_embedding_tree(self.flattened_tree, df, verbose=verbose)
+        self.header_tree=self.generate_headers(self.embedding_tree, df, verbose=verbose)
         
-
     def handle_flattening_config(self):
         for flattening_config in ['dist_flattening_config', 'ddist_flattening_config']:
             if getattr(self,flattening_config)['use_kneepoint'] and getattr(self,flattening_config)['use_std']:
@@ -114,9 +110,9 @@ class Taxomizer(BaseDirectory):
             # if getattr(self,flattening_config)['use_kneepoint']:
             #     setattr(self,flattening_config, 'std_factor', None)
         
-    def load_linkage_matrix(self, chunks_df):
+    def load_linkage_matrix(self, df):
 
-        distance_matrix = cosine_distances(np.vstack(chunks_df['emb'].values))
+        distance_matrix = cosine_distances(np.vstack(df['emb'].values))
         distance_matrix = distance_matrix.astype(np.float64)
         distance_matrix = squareform(distance_matrix, checks=False)
 
@@ -124,11 +120,11 @@ class Taxomizer(BaseDirectory):
 
         return 
     
-    def get_linkage_matrix(self, chunks_df=None):
+    def get_linkage_matrix(self, df=None):
 
         linkage_matrix=getattr(self, 'linkage_matrix', None)
         if linkage_matrix is None:
-            self.load_linkage_matrix(chunks_df)
+            self.load_linkage_matrix(df)
             linkage_matrix=self.linkage_matrix
             del self.linkage_matrix
             return linkage_matrix
@@ -136,10 +132,10 @@ class Taxomizer(BaseDirectory):
         else:
             return self.linkage_matrix
         
-    def get_flattened_tree(self, chunks_df=None):
+    def get_flattened_tree(self, df=None):
 
-        linkage_matrix=self.get_linkage_matrix(chunks_df)
-        tree=linkage_to_btree(linkage_matrix, chunks_df)
+        linkage_matrix=self.get_linkage_matrix(df)
+        tree=linkage_to_btree(linkage_matrix, df)
 
         ### Flattening the tree: several options
         self.flattening_info=dict()
@@ -185,18 +181,18 @@ class Taxomizer(BaseDirectory):
 
         return tree
     
-    def get_embedding_tree(self, flattened_tree, chunks_df, verbose=False):
+    def get_embedding_tree(self, flattened_tree, df, verbose=False):
 
         propagate_emb_from_leaves(flattened_tree)
-        tree = add_order_idc(flattened_tree, chunks_df, verbose=verbose)
+        tree = add_order_idc(flattened_tree, df, verbose=verbose)
 
         # CHECK if all chunks are included in the tree
-        chunks_df['node_id']=None
+        df['node_id']=None
         for node in PreOrderIter(tree):
             if node.is_leaf: continue
             if all([d.is_leaf for d in node.children]):
-                chunks_df.loc[node.include_chunk_idc,'node_id']=node.name
-        self.logger.info(f"all chunks included in the tree: {len(chunks_df[chunks_df['node_id'].isna()])==0}")
+                df.loc[node.include_chunk_idc,'node_id']=node.name
+        self.logger.info(f"all chunks included in the tree: {len(df[df['node_id'].isna()])==0}")
 
         # TEST IF EXCLUDE and INCLUDE CHUNKS ARE DISJOINT
         for node in PreOrderIter(tree):
@@ -212,18 +208,18 @@ class Taxomizer(BaseDirectory):
         if self.is_spawned():
             with open(f"{self._path}/embedding_tree.pkl", "wb") as f:
                 pickle.dump(tree, f)
-            chunks_df.to_pickle(f"{self._path}/chunks_df.pkl")
+            df.to_pickle(f"{self._path}/df.pkl")
         
         return tree
     
-    def generate_headers(self, embedding_tree=None, chunks_df=None, verbose=False):
+    def generate_headers(self, embedding_tree=None, df=None, verbose=False):
 
         if (not embedding_tree) and self.is_spawned():
             with open(f"{self._path}/embedding_tree.pkl", "rb") as f:
                 embedding_tree=pickle.load(f)
         
-        if (not isinstance(chunks_df,pd.DataFrame)) and self.is_spawned():
-            chunks_df=pd.read_pickle(f"{self._path}/chunks_df.pkl")
+        if (not isinstance(df,pd.DataFrame)) and self.is_spawned():
+            df=pd.read_pickle(f"{self._path}/df.pkl")
 
         tree = reset_headers(embedding_tree)
 
@@ -234,7 +230,7 @@ class Taxomizer(BaseDirectory):
         for pre, fill, node in RenderTree(tree):
             if node.is_leaf: continue
             if node.is_root: continue
-            prompt=get_header_prompt(node, tree, chunks_df)
+            prompt=get_header_prompt(node, tree, df)
             header=self.llm_pipe(prompt,use_chatformat=True, stop_strings=['\n'], max_new_tokens=100)[0]['generated_text']
             header=clean_header(header)
             node.__setattr__('header',header)
