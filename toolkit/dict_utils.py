@@ -167,6 +167,19 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
 
     return _recursive(orign_dict, mixin_dict)
 
+
+def has_keypath(the_dict, keypath):
+
+    def _recursive(the_dict, keypath):
+        key = keypath[0]
+
+        if not isinstance(the_dict, dict): return False
+        if not key in the_dict: return False
+        if len(keypath)==1: return True
+        else: return _recursive(the_dict[key], keypath[1:])
+
+    return _recursive(the_dict, keypath)
+
 def get_dict_value_from_keypath(the_dict, keypath):
 
     def _recursive(the_dict, keypath):
