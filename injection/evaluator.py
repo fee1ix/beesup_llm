@@ -32,8 +32,9 @@ class Evaluator(BaseDirectory):
             subtype=None,
             remarks=None,
             n_rows=None,
+            eval_epochs=[],
             llm_config=dict(
-            ) 
+            )
         )
 
         self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
@@ -47,12 +48,9 @@ class Evaluator(BaseDirectory):
             self.llm_pipe.update_config(self.llm_config)
             #self.llm_pipe.update_config(self._default_config['llm_config'])
             self.llm_pipe.update_config_smart(kwargs)
-            self.llm_config=self.llm_pipe.get_config()
+            #self.llm_config=self.llm_pipe.get_config()
             #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
         
-
-
-
         # load source data if available
         if os.path.exists(f"{self._path}/df.pkl"):
             self.df=pd.read_pickle(f"{self._path}/df.pkl")
@@ -60,8 +58,11 @@ class Evaluator(BaseDirectory):
 
         # attach df if provided/ overwrite loaded df
         if df is not None: self.set_df(df)
-
-
+    
+    def is_eval_epoch(self, epoch):
+        if self.eval_epochs==[]: return True
+        elif int(epoch) in self.eval_epochs: return True
+    
     def set_df(self, df=None):
         if isinstance(df, pd.DataFrame):
             self.df=df.copy()
@@ -103,7 +104,6 @@ class Evaluator(BaseDirectory):
         eval_df['eval_dict']=[dict(info="NotImplemented")] * len(eval_df)
         return eval_df
 
-
     def __call__(self, llm_ref=None, **kwargs):
 
         if llm_ref:
@@ -135,6 +135,11 @@ class Evaluator(BaseDirectory):
         self.eval_df=eval_df
             
         return eval_df
+
+
+# class MCEEvaluator(Evaluator):
+
+
 
     
 class MCQEvaluator(Evaluator):
