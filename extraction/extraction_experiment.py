@@ -15,6 +15,7 @@ from beesup_llm.extraction.extraction_pipeline import *
 from transformers import TrainerCallback
 
 class PredictionCallback(TrainerCallback):
+
     def __init__(self, experiment):
         self.experiment = experiment
         self.name='pred_callback'
@@ -22,9 +23,7 @@ class PredictionCallback(TrainerCallback):
 
     def get_pred_df(self, model, eval_df=None):
         if eval_df is None: eval_df=self.experiment.eval_df
-
         pred_df=self.experiment.extractor_pipe(eval_df, llm_ref=model)
-        #print(f"_recent_generation_config: {self.experiment.extractor_pipe.llm_pipe._recent_generation_config}")
         return pred_df
 
     def eval_loop(self, model, eval_batch_size):
@@ -54,8 +53,6 @@ class PredictionCallback(TrainerCallback):
 
         pred_df=self.eval_loop(model, args.per_device_eval_batch_size)
         self.save_df(pred_df, state.global_step)
-
-
 
 class ExtractionExperiment(BaseDirectory):
     type='extraction_experiment'
@@ -260,8 +257,6 @@ class ExtractionExperiment(BaseDirectory):
 
         callbacks_df.reset_index(drop=True, inplace=True)
         return callbacks_df
-
-
 
 if __name__ == '__main__':
     import sys

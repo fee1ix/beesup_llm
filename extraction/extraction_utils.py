@@ -196,7 +196,6 @@ def denormalize_extraction_json(old_json):
     return old_json
 
 
-
 def tabelize_json(base_json, create_meta_row=True):
 
     if not isinstance(base_json,dict):
@@ -242,7 +241,6 @@ def tabelize_json(base_json, create_meta_row=True):
     table_df.attrs['has_meta_row']=create_meta_row
 
     return table_df
-
 
 def parse_completion(completion,verbose=False):
     base_json=pydantic_parse(completion,exclude_none=False)

@@ -1,6 +1,6 @@
 from .extraction_pipeline import *
-
 from .evaluation_utils import *
+
 
 class EvaluationSample(ExtractionSample):
 
@@ -97,7 +97,6 @@ class EvaluationSample(ExtractionSample):
         print_multicol([self.gold_highlighting,self.pred_highlighting])
         return ''
 
-
 class EvaluationPipeline(ExtractionPipeline):
     type='evaluation_pipeline'
 
@@ -111,7 +110,6 @@ class EvaluationPipeline(ExtractionPipeline):
         self._default_config=dict()
         self.update_config(self._default_config, overwrite_if_conflict=False)
 
-    
     def get_eval(self, gold_completion=None, pred_completion=None, **kwargs):
         sample=EvaluationSample(gold_completion=gold_completion, pred_completion=pred_completion, **kwargs)
         return sample.eval_dict
@@ -139,8 +137,7 @@ class EvaluationPipeline(ExtractionPipeline):
 
 
         return errors_df
-
-    
+ 
     def get_eval_df(self, df, **kwargs):
         df=df.copy()
         assert 'gold_completion' in df.columns, "missing 'gold_completion' column"
@@ -153,7 +150,6 @@ class EvaluationPipeline(ExtractionPipeline):
 
         return df
   
-
     def __call__(self, the_input, condense=False, **kwargs):
 
         if isinstance(the_input,pd.DataFrame):
