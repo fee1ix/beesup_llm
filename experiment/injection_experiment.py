@@ -238,7 +238,9 @@ class InjectionExperiment(BaseDirectory):
             global_step=int(re.match(r'(\d+)_.*',fn).group(1))
             callback_df=pd.read_pickle(f"{self._path}/{fn}")
             callback_df['global_step']=global_step
-            callback_df['subtype']=re.match(r'\d+_([a-z]{3})_.*',fn).group(1)
+
+            callback_df['subtype']=re.match(r'\d+_([a-z]{3})(\d*)_.*',fn).group(1)
+            callback_df['evaluator_id']=re.match(r'\d+_([a-z]{3})(\d*)_.*',fn).group(2)
             callbacks_df=pd.concat([callbacks_df,callback_df])
 
         callbacks_df.reset_index(drop=True, inplace=True)

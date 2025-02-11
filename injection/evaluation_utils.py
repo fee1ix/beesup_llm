@@ -48,7 +48,7 @@ def recall(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_ret
 
     return _tp/(tp+fn)
 
-def f1_score(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def f1_score(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
 
     if use_fuzzy and pd.notna(tp_fuzzy):
         f1_score.label='F1_fuzzy'

@@ -304,8 +304,8 @@ class QDQEvaluator(Evaluator):
         gold_df=pd.DataFrame(sample.gold_items, columns=['gold_item']).reset_index(names=['g'])
         gold_df['gold_val']=gold_df['gold_item'].apply(normalize)
 
-
-        pred_df=pd.DataFrame(sample.pred_items, columns=['pred_item']).reset_index(names=['p'])
+        pred_items=list(set([c.strip() for c in re.split(r';',sample.pred_completion)]))
+        pred_df=pd.DataFrame(pred_items, columns=['pred_item']).reset_index(names=['p'])
         pred_df['pred_val']=pred_df['pred_item'].apply(normalize)
 
         match_data=[]
