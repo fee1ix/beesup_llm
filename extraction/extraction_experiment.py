@@ -11,7 +11,7 @@ from beesup_llm.training import *
 from beesup_llm.model_pipelines import *
 from beesup_llm.extraction.extraction_pipeline import *
 
-
+from datasets import Dataset
 from transformers import TrainerCallback
 
 class PredictionCallback(TrainerCallback):
