@@ -47,7 +47,6 @@ def ignore_warnings(ignore_messages=None):
             for warning_msg in ignore_messages:
                 warnings.filterwarnings('ignore', message=warning_msg)
 
-
 import pytz
 import datetime
 TIMEZONE = pytz.timezone('Europe/Berlin')

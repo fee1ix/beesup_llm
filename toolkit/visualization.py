@@ -81,7 +81,8 @@ def assign_colors_tree(node, hue_start=0, hue_end=1, depth=0):
         assign_colors_tree(node.right, mid_hue, hue_end, depth + 1)
 
 import math
-from IPython.display import display, HTML
+from IPython.display import display, clear_output, HTML
+
 def print_multicol(cols):
     col_width=math.floor(100/len(cols))
     html_content=""

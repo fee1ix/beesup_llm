@@ -177,7 +177,7 @@ class MCQEvaluator(Evaluator):
         prompt+="""
 You are provided with the following multiple-choice question. \
 Carefully review the options and select the correct one. \
-Respond only with the capital letter of the correct choice. \
+Respond only with the letter of the correct choice. \
 Do not provide any additional explanation or reasoning.
 """.strip()
             
@@ -204,10 +204,11 @@ Do not provide any additional explanation or reasoning.
     @staticmethod
     def get_eval_dict(sample):
 
-        gold_choice=chr(65+sample.answer).lower()
+        gold_choice=chr(65+int(sample.answer)).lower()
 
         pred_choice=sample.pred_completion.strip().lower()
         pred_choice=re.sub(r'[^a-zA-Z]','',pred_choice)
+        pred_choice=pred_choice[:1]
         
         eval_dict=dict(
             pred_choice	= pred_choice,

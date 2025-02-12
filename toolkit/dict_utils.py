@@ -144,7 +144,6 @@ def filter_dict_keydict(the_dict, ref_dict, invert=False):
 
     return new_dict
 
-
 def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if_conflict=True):
     """
     Update origin_dict with values from update_dict. If overwrite is True, values from update_dict will overwrite values from origin_dict
@@ -166,7 +165,6 @@ def update_dict(orign_dict, mixin_dict, interpret_none_as_val=True, overwrite_if
         return orign_dict
 
     return _recursive(orign_dict, mixin_dict)
-
 
 def has_keypath(the_dict, keypath):
 
