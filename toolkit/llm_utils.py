@@ -59,7 +59,7 @@ def prepare_sample_for_chat_completion(the_input, tokenizer):
 
     return tokenizer.apply_chat_template(prompt_messages,return_dict=True)
 
-def prepare_sample_for_chat_finetuning(the_input, tokenizer):
+def prepare_sample_for_chat_finetuning(the_input, tokenizer, use_as_id=None):
     
     if hasattrs_or_keys(the_input, ['prompt_messages','gold_message']):
         prompt_messages=getattr_or_key(the_input,'prompt_messages')
@@ -80,6 +80,9 @@ def prepare_sample_for_chat_finetuning(the_input, tokenizer):
     inputs=tokenizer.apply_chat_template(all_messages,return_dict=True)
 
     inputs['labels']=prompt_len*[-100]+input_ids[prompt_len:]
+
+    if (use_as_id is not None) and (hasattr_or_key(the_input, use_as_id)):
+        inputs['sample_id']=getattr_or_key(the_input, use_as_id)
 
     return inputs
 

@@ -127,12 +127,12 @@ class LanguageModelPipeline(BaseModelPipeline):
             inference_tokenizer_config=dict(
                 padding_side='left',
                 padding='longest',
-                add_special_tokens=True,
+                #add_special_tokens=True,
             ),
             training_tokenizer_config=dict(
                 padding_side='right',
                 padding='longest',
-                add_special_tokens=True,
+                #add_special_tokens=True,
             ),
             generation_config=dict(
                 return_dict_in_generate=False,

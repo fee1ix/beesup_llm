@@ -15,32 +15,20 @@ from beesup_llm.experiment import *
 from beesup_llm.injection.evaluator import *
 
 from datasets import Dataset
-from transformers import TrainerCallback
+from transformers import TrainerCallback, TrainerState
 
-class EvaluationCallback(TrainerCallback):
 
-    def __init__(self, evaluator, experiment):
-        self.evaluator=evaluator
+
+class LogHistoryCallback(TrainerCallback):
+    def __init__(self, experiment):
         self.experiment=experiment
-        self.name=f"{evaluator.subtype}{evaluator.id}_eval_callback"
-    
-    def save_eval_df(self, eval_df, global_step):
 
-        save_path=f"{self.experiment._path}/{str(global_step).zfill(4)}_{self.name}_df.pkl"
+    def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+        log_history_df=pd.DataFrame(state.log_history)
+        log_history_df.to_pickle(f"{self.experiment._path}/log_history_df.pkl")
 
-        eval_df.to_pickle(save_path)
-        self.experiment.logger.info(f"Saved {self.name} to {save_path}")
-    
-    def on_epoch_end(self, args, state, control, **kwargs):
 
-        if not self.evaluator.is_eval_epoch(state.epoch): return #skip evaluation if not specified as eval epoch
-            
-        self.experiment.logger.info(f"global step: {state.global_step}")
-        model=kwargs['model']
-        model.eval()
 
-        eval_df=self.evaluator(llm_ref=model)
-        self.save_eval_df(eval_df, state.global_step)
 
 
 class InjectionExperiment(BaseDirectory):
@@ -138,8 +126,7 @@ class InjectionExperiment(BaseDirectory):
             self.dataset=BaseDataset.from_ref(dataset_ref)
             self.dataset_config=self.dataset.get_config()
         
-
-        
+        self.evaluators=[]
         if eval_refs:
             self.evaluators=[Evaluator.from_ref(eval_ref) for eval_ref in eval_refs]
             self.eval_configs=[pipe.get_config() for pipe in self.evaluators]
@@ -151,34 +138,15 @@ class InjectionExperiment(BaseDirectory):
         assert hasattr(self, 'llm_pipe'), "llm_pipe must be assigned before loading data"
         
         train_df=self.dataset.get_df_splits('train')
+        self.train_df=train_df
 
         self.llm_pipe.load_training_tokenizer()
         self.llm_pipe.load_inference_tokenizer()
 
-        train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_training_tokenizer()),axis=1).to_list())
-
-        self.train_df=train_df
+        train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_training_tokenizer(), use_as_id='kidx'),axis=1).to_list())
         self.train_ds=train_ds
 
 
-    # def load_trainer(self, model=None, **kwargs):
-    #     assert model is not None, "model must be passed"
-
-    #     self.logger.info(f"Loading Trainer")
-
-    #     trainer= self.trainwrap.get_trainer(
-    #         model=model,
-    #         tokenizer=self.llm_pipe.get_training_tokenizer(),
-    #         train_dataset=self.train_ds,
-
-    #     )
-
-    #     for evaluator in self.evaluators:
-    #         trainer.add_callback(EvaluationCallback(evaluator, self))
-
-    #     return trainer
-
-       
     def run(self,**kwargs):
 
         self.logger.info(f"RUNNING")
@@ -196,24 +164,26 @@ class InjectionExperiment(BaseDirectory):
 
         if self.do_eval_base_model:
             for evaluator in self.evaluators:
-                if not evaluator.is_eval_epoch(0): continue
-                
-                eval_df=evaluator(llm_ref=self.llm_pipe)
-                eval_callback=EvaluationCallback(evaluator, self)
-                eval_callback.save_eval_df(eval_df,0)
+                eval_callback=EvaluatorCallback(evaluator, self)
+                eval_callback.on_epoch_end(state=TrainerState(epoch=0), model=self.llm_pipe.model)
 
         if self.do_finetuning:
             self.ftn_pipe.load_trainer(
+                model=self.llm_pipe.model,
                 train_dataset=self.train_ds,
             )
+
+            self.ftn_pipe.trainer.add_callback(LogHistoryCallback(self))
+            self.ftn_pipe.trainer.add_callback(MCEEvaluatorCallback(self))
             for evaluator in self.evaluators:
-                self.ftn_pipe.trainer.add_callback(EvaluationCallback(evaluator, self))
+                self.ftn_pipe.trainer.add_callback(EvaluatorCallback(evaluator, self))
 
             self.lora_info=getattr(self.ftn_pipe, 'lora_info', None)
             save_yaml(self.ftn_pipe.trainer.args.to_dict(), f"{self._path}/trainer_args.yaml")
             set_config(self.get_config(),path=self._path)
 
             self.ftn_pipe.trainer.train()
+        
 
         self.done=True
         self.timestamp_done=get_timestamp()
@@ -221,12 +191,13 @@ class InjectionExperiment(BaseDirectory):
         return
 
     def spawn(self):
-        if not all([hasattr(self, attr) for attr in ['llm_pipe','dataset','ftn_pipe','evaluators']]):
-            raise ValueError("llm_pipe, dataset, ftn_pipe, evaluators must be assigned before spawning.")
+        if not all([hasattr(self, attr) for attr in ['llm_pipe','dataset','ftn_pipe']]):
+            raise ValueError("llm_pipe, dataset, ftn_pipe must be assigned before spawning.")
 
         if not self.llm_pipe.is_spawned(): self.llm_pipe.spawn()
         if not self.dataset.is_spawned(): self.dataset.spawn()
         if not self.ftn_pipe.is_spawned(): self.ftn_pipe.spawn()
+
 
         for evaluator in self.evaluators:
             if not evaluator.is_spawned(): self.logger.warning(f"{evaluator} not spawned")

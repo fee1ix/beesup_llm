@@ -1,9 +1,55 @@
 import beesup_llm
 from beesup_llm import *
 from beesup_llm.model_pipelines import *
-
 from rapidfuzz import fuzz
 
+from transformers import TrainerCallback
+
+class EvaluatorCallback(TrainerCallback):
+
+    def __init__(self, evaluator, experiment):
+        self.evaluator=evaluator
+        self.experiment=experiment
+        self.name=f"{evaluator.subtype}-{evaluator.id}_callback"
+    
+    def save_df(self, callback_df, state):
+        save_path=f"{self.experiment._path}/{str(int(state.epoch))}-{str(state.global_step)}_{self.name}_df.pkl"
+        callback_df.to_pickle(save_path)
+        self.experiment.logger.info(f"Saved {self.name} to {save_path}")
+    
+    def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+
+        if not self.evaluator.is_eval_epoch(state.epoch):
+            self.experiment.logger.info(f"{self.name}\tepoch: {state.epoch}\tglobal step: {state.global_step} not an eval epoch")
+            return #skip evaluation if not specified as eval epoch
+            
+        self.experiment.logger.info(f"epoch: {state.epoch}\tglobal step: {state.global_step}")
+
+        model=kwargs['model']
+        model.eval()
+
+        callback_df=self.evaluator(llm_ref=model, **kwargs)
+        self.save_df(callback_df, state)
+
+class MCEEvaluatorCallback(EvaluatorCallback):
+
+    def __init__(self, experiment):
+        self.experiment=experiment
+        self.name=f"mce_callback"
+        self.loss_data=[]
+    
+    def add_loss_data(self, data):
+        self.loss_data.extend(data)
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+
+        callback_df=pd.DataFrame(self.loss_data)
+
+        self.loss_data = []
+        self.save_df(callback_df, state)
+    
+
+    
 class Evaluator(BaseDirectory):
     type='llm_evaluator'
 
@@ -12,12 +58,12 @@ class Evaluator(BaseDirectory):
         kwargs.update(get_cls_attrs(cls))
         cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
         pre_config = get_config_from_ref(ref, **kwargs)
-
+        
         if MCQEvaluator.matches(pre_config): return MCQEvaluator(ref=pre_config, **kwargs)
         if QDQEvaluator.matches(pre_config): return QDQEvaluator(ref=pre_config, **kwargs)
         if FFQEvaluator.matches(pre_config): return FFQEvaluator(ref=pre_config, **kwargs)
         if KRQEvaluator.matches(pre_config): return KRQEvaluator(ref=pre_config, **kwargs)
-
+    
         return cls(ref=pre_config, **kwargs)
 
     @classmethod
@@ -136,12 +182,7 @@ class Evaluator(BaseDirectory):
             
         return eval_df
 
-
-# class MCEEvaluator(Evaluator):
-
-
-
-    
+   
 class MCQEvaluator(Evaluator):
     subtype='mcq'
 
@@ -225,7 +266,6 @@ Do not provide any additional explanation or reasoning.
         eval_df['eval_dict']=eval_df.apply(self.get_eval_dict, axis=1)
 
         return eval_df
-
 
 class QDQEvaluator(Evaluator):
     subtype='qdq'
@@ -366,7 +406,6 @@ class QDQEvaluator(Evaluator):
 
     #     return eval_df
 
-
 class FFQEvaluator(Evaluator):
     subtype='ffq'
 
@@ -409,7 +448,6 @@ class FFQEvaluator(Evaluator):
         pred_df=llm_pipe(pred_df)
 
         return pred_df
-
 
 class KRQEvaluator(Evaluator):
     subtype='krq'
