@@ -12,12 +12,6 @@ import types
 
 
 
-
-
-
-
-
-
 class FinetuningPipeline(BaseDirectory):
     type='finetuning_pipeline'
 
@@ -66,6 +60,7 @@ class FinetuningPipeline(BaseDirectory):
                 eval_strategy='epoch',
                 prediction_loss_only=False,
                 remove_unused_columns=False,
+                report_to="none",
             ),
             data_collator_config=dict(
                 padding='longest',
@@ -98,7 +93,7 @@ class FinetuningPipeline(BaseDirectory):
         pass
 
 
-
+import pickle
 from trl import SFTTrainer, SFTConfig
 from transformers.trainer import *
 from transformers import TrainingArguments, DataCollatorForSeq2Seq
@@ -108,50 +103,58 @@ class CustomSFTTrainer(SFTTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        setattr(self.state, "per_sample_losses", [])  # Ensure state has this attribute
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Get the usual loss and outputs from the parent
         loss, outputs = super().compute_loss(
             model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
         )
 
+        global_step=int(self.state.global_step)+1
+        epoch=int(self.state.epoch+global_step/self.state.max_steps)
+        # with open(f"{epoch}-{global_step}-inputs.pkl", "wb") as f: pickle.dump(inputs, f)
+        # with open(f"{epoch}-{global_step}-loss.pkl", "wb") as f: pickle.dump(loss, f)
+        # with open(f"{epoch}-{global_step}-outputs.pkl", "wb") as f: pickle.dump(outputs, f)
+        
+
         if "labels" in inputs:
-            logits = outputs.logits  # (batch_size, seq_len, vocab_size)
+            logits = outputs.logits
+            logits = logits[..., :-1, :].contiguous() # Shift so that tokens < n predict n
+            logits = logits.permute(0,2,1) # (batch_size, vocab_size, seq_len)
+
             labels = inputs["labels"]  # (batch_size, seq_len)
+            labels = labels[..., 1:].contiguous() # Shift so that tokens < n predict n
 
-            # Compute per-token loss (no reduction)
-            loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-            per_token_loss = loss_fct(
-                logits.view(-1, logits.size(-1)), labels.view(-1)
-            )
-            # Reshape to (batch_size, seq_len)
-            per_token_loss = per_token_loss.view(logits.size(0), logits.size(1))
-            # Average loss over sequence length to get per-sample loss
-            per_sample_loss = per_token_loss.mean(dim=1)
 
-            # Retrieve sample IDs (assumes your data collator added a "sample_ids" tensor)
-            
-            sample_ids = inputs["sample_ids"].cpu().tolist()
+            loss_fct = torch.nn.CrossEntropyLoss()
+            tokens_per_sample=torch.tensor([(labs != -100).sum().item() for labs in labels])
+            batch_proportions=tokens_per_sample/tokens_per_sample.sum()
+            batch_proportions=batch_proportions.tolist()
+            loss_per_sample=torch.tensor([loss_fct(logs.unsqueeze(0), labs.unsqueeze(0)).item() for logs, labs in zip(logits, labels)])
+            loss_per_sample=loss_per_sample.detach().cpu().tolist()
 
             if "sample_ids" in inputs:
                 sample_ids = inputs["sample_ids"].cpu().tolist()
             else:
                 sample_ids = labels.size(0)*[0]  # fallback
-
-            # Create a list of dictionaries for this batch:
-            batch_losses = [
-                {"sample_id": s, "loss": l}
-                for s, l in zip(sample_ids, per_sample_loss.detach().cpu().tolist())
-            ]
+            
+            loss_data=[]
+            for l, s, p in zip(loss_per_sample, sample_ids, batch_proportions):
+                loss_data.append(
+                    dict(
+                        global_step=global_step,
+                        epoch=epoch,
+                        sample_id=s,
+                        loss=l,
+                        batch_proportion=p,
+                    )
+                )
 
             # Now "push" these losses to any callback that implements `add_loss`
             for callback in self.callback_handler.callbacks:
                 if hasattr(callback, "add_loss_data"):
-                    callback.add_loss_data(batch_losses)
+                    callback.add_loss_data(loss_data)
 
         return (loss, outputs) if return_outputs else loss
-
 
 class CustomDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
     """Custom DataCollatorForSeq2Seq that returns sample IDs in the batch."""

@@ -26,7 +26,7 @@ class BaseModelPipeline(BaseDirectory):
         if llm_pipeline: return llm_pipeline
         if emb_pipeline: return emb_pipeline
         else: return None
-            
+    
     @classmethod
     def from_ref(cls, ref=None, **kwargs):
         kwargs.update(get_cls_attrs(cls))
@@ -66,6 +66,32 @@ class BaseModelPipeline(BaseDirectory):
         )
 
 
+    def get_tokenizer(self,**kwargs):
+
+        tokenizer=AutoTokenizer.from_pretrained(
+            self.name_or_path,
+            **kwargs
+        )
+
+        return tokenizer
+
+        
+
+
+
+    def get_model(self):
+
+        model=getattr(self, 'model', None)
+        if model is None:
+            self.load_model()
+            model=self.model
+            del self.model
+            return model
+        
+        else:
+            return self.model
+
+
 from threading import Thread
 from transformers import \
     AutoTokenizer, \
@@ -81,8 +107,6 @@ class LanguageModelPipeline(BaseModelPipeline):
 
     @staticmethod
     def matches(ref):
-        if getattr_or_key(ref, 'type') == 'gen_model': return True
-
         if LlamaPipeline.matches(ref): return True
         if MistralPipeline.matches(ref): return True
         return False
@@ -169,18 +193,7 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         return
     
-    def get_model(self):
-
-        model=getattr(self, 'model', None)
-        if model is None:
-            self.load_model()
-            model=self.model
-            del self.model
-            return model
-        
-        else:
-            return self.model
-      
+    
     def load_inference_tokenizer(self):
 
         self.inference_tokenizer=AutoTokenizer.from_pretrained(
@@ -504,9 +517,31 @@ class PhiPipeline(LanguageModelPipeline):
         )
 
 
+from transformers import AutoModel
 
 class EmbeddingModelPipeline(BaseModelPipeline):
     type='emb_pipeline'
+
+    @staticmethod
+    def matches(ref):
+        if NVEmbedPipeline.matches(ref): return True
+        return False
+
+    @classmethod
+    def from_ref(cls, ref=None, **kwargs):
+        kwargs.update(get_cls_attrs(cls))
+        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
+
+        pre_config = get_config_from_ref(ref, **kwargs)
+
+        if getattr(ref, 'type', None) == cls.type:
+            if hasattr(ref,'model'): kwargs['model']=ref.model
+        
+        if isinstance(ref, torch.nn.Module):
+            kwargs['model']=ref
+
+        if NVEmbedPipeline.matches(pre_config): return NVEmbedPipeline(ref=pre_config, **kwargs)
+        return cls(ref=pre_config, **kwargs)
 
     def __init__(self, ref=None, **kwargs):
         self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
@@ -521,6 +556,8 @@ class EmbeddingModelPipeline(BaseModelPipeline):
             model_load_config=dict(
                 trust_remote_code=True,
             ),
+            tokenizer_config=dict(
+            ),
             encode_config=dict(  
             ),
         )
@@ -529,7 +566,6 @@ class EmbeddingModelPipeline(BaseModelPipeline):
         self._config_keys_to_exclude.extend([])
         
         self.update_config(self._default_config, overwrite_if_conflict=False)
-
         self.update_config_smart(
             kwargs, 
             interpret_none_as_val=True, 
@@ -537,3 +573,53 @@ class EmbeddingModelPipeline(BaseModelPipeline):
             allow_new_atomic_keys=False, 
             allow_new_nested_keys=False
         )
+
+    def load_tokenizer(self):
+        self.tokenizer=self.get_tokenizer()
+
+    def load_model(self):
+
+        self.logger.info(f"Loading model {self.name_or_path}")
+        self.model = AutoModel.from_pretrained(
+            self.name_or_path,
+            device_map="auto",
+            quantization_config=BitsAndBytesConfig(
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                **self.bnb_config
+                ),
+            **self.model_load_config
+            )
+
+        return
+
+
+class NVEmbedPipeline(EmbeddingModelPipeline):
+
+    @staticmethod
+    def matches(ref):
+        if getattr_or_key(ref, 'name_or_path') == 'nvidia/NV-Embed-v2': return True
+        return False
+
+    def __init__(self, ref=None, **kwargs):
+        self.logger.debug(f"{self.__class__} ref={ref}, kwargs = {kwargs}\n")
+        super().__init__(ref, **kwargs)
+
+        self._default_config=dict(
+            name_or_path='nvidia/NV-Embed-v2',
+            base_model='NV-Embed-v2',
+
+        )
+
+        self._config_key_order.extend(list(self._default_config.keys()))
+        self._config_keys_to_exclude.extend([])
+        
+        self.update_config(self._default_config, overwrite_if_conflict=True)
+        self.update_config_smart(
+            kwargs, 
+            interpret_none_as_val=True, 
+            overwrite_if_conflict=True, 
+            allow_new_atomic_keys=False, 
+            allow_new_nested_keys=False
+        )
+
+    

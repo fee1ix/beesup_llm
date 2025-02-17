@@ -75,6 +75,7 @@ class InjectionExperiment(BaseDirectory):
             seed = 55,
             do_eval_base_model=True,
             do_finetuning=True,
+            remarks='',
             llm_config=dict(
                 generation_config=dict(
                     max_new_tokens=4096,
@@ -146,7 +147,6 @@ class InjectionExperiment(BaseDirectory):
         train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_training_tokenizer(), use_as_id='kidx'),axis=1).to_list())
         self.train_ds=train_ds
 
-
     def run(self,**kwargs):
 
         self.logger.info(f"RUNNING")
@@ -207,19 +207,41 @@ class InjectionExperiment(BaseDirectory):
     def get_callbacks_df(self):
 
         fns=os.listdir(self._path)
-        fns=[fn for fn in fns if fn.endswith('df.pkl')]
+        fns=[fn for fn in fns if fn.endswith('callback_df.pkl')]
         callbacks_df=pd.DataFrame()
         for fn in fns:
-            global_step=int(re.match(r'(\d+)_.*',fn).group(1))
+            try:
+                epoch,global_step,evaluator_type,evaluator_id=re.match(r'(\d+)-(\d+)_([a-z]+)(?:-(\d+))?.*',fn).groups()
+                epoch,global_step=int(epoch),int(global_step)
+                if evaluator_id: evaluator_id=int(evaluator_id)
+
+            except:
+                self.logger.warning(f"Could not regex-parse {fn}")
+                epoch,global_step,evaluator_type,evaluator_id=None,None,None,None
+
             callback_df=pd.read_pickle(f"{self._path}/{fn}")
-            callback_df['global_step']=global_step
 
-            callback_df['subtype']=re.match(r'\d+_([a-z]{3})(\d*)_.*',fn).group(1)
-            callback_df['evaluator_id']=re.match(r'\d+_([a-z]{3})(\d*)_.*',fn).group(2)
+            if 'epoch' not in callback_df.columns:
+                callback_df['epoch']=epoch
+
+            if 'global_step' not in callback_df.columns:
+                callback_df['global_step']=global_step
+
+            callback_df['evaluator_type']=evaluator_type
+            callback_df['evaluator_id']=evaluator_id
             callbacks_df=pd.concat([callbacks_df,callback_df])
-
         callbacks_df.reset_index(drop=True, inplace=True)
+
         return callbacks_df
+
+    def get_log_history_df(self):
+        return pd.read_pickle(f"{self._path}/log_history_df.pkl")
+
+
+
+
+
+
 
 if __name__ == '__main__':
     import sys

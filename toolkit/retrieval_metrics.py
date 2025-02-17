@@ -1,6 +1,6 @@
 import pandas as pd
 
-def precision(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def precision(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
 
     if use_fuzzy and pd.notna(tp_fuzzy):
         precision.label='P_fuzzy'
@@ -17,7 +17,7 @@ def precision(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_
 
     return _tp/(tp+fp)
 
-def recall(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def recall(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
     
     if use_fuzzy and pd.notna(tp_fuzzy):
         recall.label='R_fuzzy'
@@ -34,7 +34,7 @@ def recall(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_ret
 
     return _tp/(tp+fn)
 
-def accuracy(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def accuracy(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
     
     if use_fuzzy and pd.notna(tp_fuzzy):
         accuracy.label='ACC_fuzzy'
@@ -54,7 +54,7 @@ def accuracy(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_r
     denominator=tp+fn+fp+tn
     return numerator/denominator
 
-def balanced_error_rate(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def balanced_error_rate(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
 
     if use_fuzzy and pd.notna(tp_fuzzy):
         balanced_error_rate.label='BER_fuzzy'
@@ -74,7 +74,7 @@ def balanced_error_rate(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=
 
     return ber
 
-def f1_score(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None):
+def f1_score(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
 
     if use_fuzzy and pd.notna(tp_fuzzy):
         f1_score.label='F1_fuzzy'
