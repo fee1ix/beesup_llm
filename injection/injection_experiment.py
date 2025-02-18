@@ -14,9 +14,9 @@ from beesup_llm.model_pipelines import *
 from beesup_llm.experiment import *
 from beesup_llm.injection.evaluator import *
 
+
 from datasets import Dataset
 from transformers import TrainerCallback, TrainerState
-
 
 
 class LogHistoryCallback(TrainerCallback):
@@ -26,9 +26,6 @@ class LogHistoryCallback(TrainerCallback):
     def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
         log_history_df=pd.DataFrame(state.log_history)
         log_history_df.to_pickle(f"{self.experiment._path}/log_history_df.pkl")
-
-
-
 
 
 class InjectionExperiment(BaseDirectory):
@@ -96,7 +93,6 @@ class InjectionExperiment(BaseDirectory):
             eval_configs=[]
         )    
 
-
         self._config_key_order.extend(list(self._default_config.keys()))
         self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','ftn_pipe','llm_pipe','dataset','evaluators'])
 
@@ -122,10 +118,15 @@ class InjectionExperiment(BaseDirectory):
             self.ftn_pipe.trainer_config['seed']=self.seed
             self.ftn_config=self.ftn_pipe.get_config()
 
-        
         if dataset_ref:
             self.dataset=BaseDataset.from_ref(dataset_ref)
+
+            if hasattr(self.dataset, 'tax_config'):
+                from beesup_llm.injection.taxomizer import Taxomizer
+                self.taxomizer=Taxomizer(self.dataset.tax_config)
+                
             self.dataset_config=self.dataset.get_config()
+
         
         self.evaluators=[]
         if eval_refs:
@@ -236,11 +237,6 @@ class InjectionExperiment(BaseDirectory):
 
     def get_log_history_df(self):
         return pd.read_pickle(f"{self._path}/log_history_df.pkl")
-
-
-
-
-
 
 
 if __name__ == '__main__':

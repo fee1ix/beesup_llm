@@ -18,14 +18,17 @@ Wildbienen
         └──  Wildbienenarten der Dünen-Steppenbiene
 """.strip()
 
-def get_system_prompt(toc=TOC, **kwargs):
+
+
+def get_system_prompt(toc=None,**kwargs):
     prompt=""
     prompt+="""
 You are a knowledge-oriented AI assistant specialised in wild bee knowledge. \
 You only respond in German.
 """.strip()
     
-    prompt+="\n\nYour wild-bee knowledge is organized in the following knowledge-tree:\n"
-    prompt+=f"{toc}"
+    if toc:
+        prompt+="\n\nYour wild-bee knowledge is organized in the following knowledge-tree:\n"
+        prompt+=f"{toc}"
 
     return prompt

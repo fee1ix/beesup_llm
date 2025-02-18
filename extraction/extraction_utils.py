@@ -79,9 +79,6 @@ def pydantic_parse(completion,exclude_none=True):
 
         scientific_name_in_obs = False
         if 'observations' in completion_json:
-            # if not isinstance(completion_json['observations'],list):
-            #     completion_json['observations']
-
             if isinstance(completion_json['observations'],list):
                 scientific_name_in_obs = all(['scientific_name' in obs.keys() for obs in completion_json['observations']])
 
@@ -195,7 +192,6 @@ def denormalize_extraction_json(old_json):
     old_json=denormalize_json(old_json)
     return old_json
 
-
 def tabelize_json(base_json, create_meta_row=True):
 
     if not isinstance(base_json,dict):
@@ -205,8 +201,6 @@ def tabelize_json(base_json, create_meta_row=True):
     base_json=copy.deepcopy(base_json)
     meta_row={k.replace('meta_',''):v for k,v in base_json.items() if k != "observations"}
     meta_emty=all([val==None for val in meta_row.values()])
-
-    #print(base_json)
 
     obs_rows=base_json["observations"]
     obs_emty=(obs_rows==None)

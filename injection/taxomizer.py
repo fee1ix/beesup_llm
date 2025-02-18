@@ -243,7 +243,8 @@ class Taxomizer(BaseDirectory):
         
         return tree
 
-        
+    def get_table_of_contents(self):
+        return get_table_of_contents(self.header_tree)
 
     
 

@@ -1,6 +1,7 @@
 import beesup_llm
 from beesup_llm import *
 from beesup_llm.model_pipelines import *
+from beesup_llm.injection.taxomizer import *
 from rapidfuzz import fuzz
 
 from beesup_llm.injection import get_system_prompt
@@ -24,13 +25,17 @@ class EvaluatorCallback(TrainerCallback):
         if not self.evaluator.is_eval_epoch(state.epoch):
             self.experiment.logger.info(f"{self.name}\tepoch: {state.epoch}\tglobal step: {state.global_step} not an eval epoch")
             return #skip evaluation if not specified as eval epoch
-            
+        
+        toc=None
+        if hasattr(self.experiment,'taxomizer'):
+            toc=self.experiment.taxomizer.get_table_of_contents()
+
         self.experiment.logger.info(f"epoch: {state.epoch}\tglobal step: {state.global_step}")
 
         model=kwargs['model']
         model.eval()
 
-        callback_df=self.evaluator(llm_ref=model, **kwargs)
+        callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
         self.save_df(callback_df, state)
 
 class MCEEvaluatorCallback(EvaluatorCallback):
@@ -103,6 +108,7 @@ class Evaluator(BaseDirectory):
             #self.llm_config=self.llm_pipe.get_config()
             #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
         
+        
         # load source data if available
         if os.path.exists(f"{self._path}/df.pkl"):
             self.df=pd.read_pickle(f"{self._path}/df.pkl")
@@ -131,9 +137,10 @@ class Evaluator(BaseDirectory):
         self.df.to_pickle(f"{self._path}/df.pkl")
 
     def get_prompt_messages(self, sample, **kwargs):
+
         prompt_messages=[]
         prompt_messages.append(dict(role='system', content=get_system_prompt(**kwargs)))
-        prompt_messages.append(dict(role='user', content=self.get_prompt(sample, **kwargs)))
+        prompt_messages.append(dict(role='user', content=self.get_prompt(sample)))
         return prompt_messages
         
 
@@ -160,7 +167,6 @@ class Evaluator(BaseDirectory):
         elif hasattr(self, 'llm_pipe'):
             llm_pipe=self.llm_pipe
         
-    
         #PREDICT
         pred_df=self.df.copy()
         try:
@@ -237,8 +243,8 @@ Do not provide any additional explanation or reasoning.
         if df is None: df=self.df
         pred_df=df.copy()
 
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x), axis=1)
-        if 'mmluidx' in df.columns: pred_df['prompt_messages']=pred_df['prompt_messages'].apply(lambda x: x[1:]) #remove system message
+        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
+        if 'mmluidx' in df.columns: pred_df['prompt_messages']=pred_df['prompt_messages'].apply(lambda x: x[1:]) #remove system message if MMLU sample
 
         pred_df=llm_pipe(pred_df)
 
@@ -326,7 +332,7 @@ class QDQEvaluator(Evaluator):
         fewshots_df=df[:1].copy()
         pred_df=df[1:].reset_index(drop=True).copy()
 
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, fewshots=fewshots_df), axis=1)
+        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, fewshots=fewshots_df, **kwargs), axis=1)
 
         #pred_df['prompt_messages']=pred_df.apply(lambda x: [dict(role='user', content=self.get_prompt(x, fewshots_df))], axis=1)
 
@@ -451,7 +457,7 @@ class FFQEvaluator(Evaluator):
         if df is None: df=self.df
         pred_df=df.copy()
 
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x), axis=1)
+        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
         pred_df=llm_pipe(pred_df)
 
         return pred_df
