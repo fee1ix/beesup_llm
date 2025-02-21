@@ -634,7 +634,8 @@ def get_conf_dict(errors_df):
         }
 
     #OBSERVATION VALUES
-    selected_df=errors_df[(errors_df.g!=0)&(errors_df.p!=0)]
+    if errors_df.attrs['has_meta_row']: selected_df=errors_df[(errors_df.g!=0)&(errors_df.p!=0)]
+    else: selected_df=errors_df
     conf_dict['attr']={
         'tp':len(selected_df[selected_df.type.isin(['tp_val'])]),
         'tp_fuzzy':selected_df[selected_df.type.isin(['tp_val'])]['fuzzy_score'].sum(),
@@ -642,7 +643,7 @@ def get_conf_dict(errors_df):
         'fn':len(selected_df[selected_df.type.isin(['fn_val'])]),
         'tn':len(selected_df[selected_df.type.isin(['tn_val'])]),
     }
-
+    
     return conf_dict
 
 def get_eval_dict(conf_dict):
