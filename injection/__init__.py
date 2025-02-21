@@ -24,7 +24,8 @@ def get_system_prompt(toc=None,**kwargs):
     prompt=""
     prompt+="""
 You are a knowledge-oriented AI assistant specialised in wild bee knowledge. \
-You only respond in German.
+Provide only factually accurate information. \
+If you are uncertain about an answer, state that you do not know rather than guessing or making assumptions.
 """.strip()
     
     if toc:

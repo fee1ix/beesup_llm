@@ -52,7 +52,6 @@ import datetime
 TIMEZONE = pytz.timezone('Europe/Berlin')
 TIMESTAMP_FORMAT='%Y-%m-%d_%H-%M-%S'
 
-
 def get_datetime(a_timestamp=None):
     if a_timestamp is not None:
         return datetime.datetime.strptime(a_timestamp, TIMESTAMP_FORMAT).replace(tzinfo=TIMEZONE)

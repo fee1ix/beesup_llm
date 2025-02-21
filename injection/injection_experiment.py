@@ -13,6 +13,7 @@ from beesup_llm.model_pipelines import *
 
 from beesup_llm.experiment import *
 from beesup_llm.injection.evaluator import *
+from beesup_llm.injection.rag_pipeline import *
 
 
 from datasets import Dataset
@@ -71,6 +72,7 @@ class InjectionExperiment(BaseDirectory):
             done = False,
             seed = 55,
             do_eval_base_model=True,
+            do_eval_rag=True,
             do_finetuning=True,
             remarks='',
             llm_config=dict(
@@ -167,7 +169,22 @@ class InjectionExperiment(BaseDirectory):
             for evaluator in self.evaluators:
                 eval_callback=EvaluatorCallback(evaluator, self)
                 eval_callback.on_epoch_end(state=TrainerState(epoch=0), model=self.llm_pipe.model)
+        
+        if self.do_eval_rag:
 
+            self.logger.info(f"Running RAG Evaluation!")
+
+            rag_pipe=RAGPipeline(
+                llm_ref=self.llm_pipe,
+                dataset_ref=self.dataset,
+                selectors = [fit_tokn_limit(limit=1000), fit_knee_score()]
+                )
+
+            for evaluator in self.evaluators:
+                eval_callback=EvaluatorCallback(evaluator, self)
+                eval_callback.on_epoch_end(state=TrainerState(epoch=0, global_step=1), model=self.llm_pipe.model, llm_pipe=rag_pipe)
+
+        
         if self.do_finetuning:
             self.ftn_pipe.load_trainer(
                 model=self.llm_pipe.model,

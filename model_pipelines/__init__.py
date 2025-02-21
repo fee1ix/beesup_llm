@@ -138,8 +138,6 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         self._default_config=dict(
             pipeline_args=dict(
-                # return_text=None,
-                # return_tensors=None,
                 return_full_text=False,
                 clean_up_tokenization_spaces=True,
             ),
