@@ -4,7 +4,7 @@ from beesup_llm.model_pipelines import *
 from beesup_llm.injection.taxomizer import *
 from rapidfuzz import fuzz
 
-from beesup_llm.injection import get_system_prompt
+from beesup_llm.injection import *
 
 from transformers import TrainerCallback
 
@@ -221,25 +221,9 @@ class MCQEvaluator(Evaluator):
             #self.llm_config=self.llm_pipe.get_config()
 
     @staticmethod 
-    def get_prompt(sample,**kwargs):
-        prompt=""
-        prompt+="""
-You are provided with the following multiple-choice question. \
-Carefully review the options and select the correct one. \
-Respond only with the letter of the correct choice. \
-Do not provide any additional explanation or reasoning.
-""".strip()
-            
-        prompt+=f"\n\n### QUESTION:\n\n"
-        prompt+=f"{sample.question}\n\n"
+    def get_prompt(sample, **kwargs):
+        return get_mcq_prompt(sample, **kwargs)
 
-        for i, choice in enumerate(sample.choices):
-            prompt+=f"{chr(65+i)}) {choice}\n"
-
-        prompt+="\n### LETTER OF CORRECT CHOICE:\n"
-
-        return prompt
-    
     def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
         if df is None: df=self.df
         pred_df=df.copy()
@@ -307,7 +291,7 @@ class QDQEvaluator(Evaluator):
             #self.llm_config=self.llm_pipe.get_config()
 
     @staticmethod 
-    def get_prompt_messages(sample, fewshots_df=None, **kwargs):
+    def legacy_get_prompt_messages(sample, fewshots_df=None, **kwargs):
 
         prompt_messages=[]
         prompt_messages.append(dict(role='system', content=get_system_prompt(**kwargs))) #kwargs could pass toc!!
@@ -320,7 +304,6 @@ class QDQEvaluator(Evaluator):
         prompt_messages[-1]['content']+="If you are unsure or do not know the answer, please respond with 'I do not know'. "
 
 
-
         if isinstance(fewshots_df, pd.DataFrame):
             for _,fewshot in fewshots_df.iterrows():
                 prompt_messages.append(dict(role='user', content=f"{fewshot.question}"))
@@ -328,6 +311,10 @@ class QDQEvaluator(Evaluator):
         
         prompt_messages.append(dict(role='user', content=f"{sample.question}"))
         return prompt_messages
+
+    @staticmethod 
+    def get_prompt(sample, **kwargs):
+        return get_qdq_prompt(sample, **kwargs)
 
     def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
         if df is None: df=self.df
@@ -447,9 +434,9 @@ class FFQEvaluator(Evaluator):
 
     @staticmethod 
     def get_prompt(sample,**kwargs):
-        return sample['question']
+        return get_ffq_prompt(sample, **kwargs)
     
-
+  
     def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
         if df is None: df=self.df
         pred_df=df.copy()

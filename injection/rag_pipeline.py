@@ -2,7 +2,7 @@ from beesup_llm import *
 from beesup_llm.model_pipelines import *
 from beesup_llm.dataset import *
 
-from beesup_llm.injection import get_system_prompt
+from beesup_llm.injection import get_system_prompt, get_context
 
 # Selector Classes: Used to select chunks presented to the language model
 class fit_tokn_limit:
@@ -71,10 +71,7 @@ class RAGPipeline(BaseDirectory):
             dataset_df=dataset_df.merge(parent_df[add_cols+[f"{self.emb_col}_emb"]], left_on='kidx', right_index=True, how='left')
             dataset_df.rename(columns={f"{self.emb_col}_emb":'emb'}, inplace=True)
             self.df=dataset_df
-
-            print(self.df.columns)
-            
-        
+   
         if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
             self.llm_pipe.update_config(self.llm_config)
@@ -109,7 +106,7 @@ class RAGPipeline(BaseDirectory):
 
         return ranking_df
 
-    def get_prompt_messages(self, sample):
+    def get_prompt_messages(self, sample, **kwargs):
 
         ranking_df=self.get_ranking_df(sample)
 
@@ -121,25 +118,19 @@ class RAGPipeline(BaseDirectory):
         prompt_messages=[]
 
         #system message
-        prompt_messages.append(dict(role='system', content=get_system_prompt()))
-        prompt_messages[-1]['content']+="""
-    You have access to relevant knowledge chunks. \
-    Your goal is to answer the user's question strictly based on the provided context. \
-    If the answer is not present in the context, state "I don't know". \
-    Do not attempt to answer using outside knowledge.
-    """.strip()
-        
+        prompt_messages.append(dict(role='system', content=get_system_prompt(rag=True,**kwargs)))
+
         #user message with briefing chunks + question
         
         prompt_messages.append(dict(role='user', content=''))
-        prompt_messages[-1]['content']+="### Context:\n"
-        for _,row in briefing_df.iterrows():
-            prompt_messages[-1]['content']+=f"{row[self.chunk_col]}\n\n"
+        prompt_messages[-1]['content']+=get_context(briefing_df, chunk_col=self.chunk_col)
 
-        prompt_messages[-1]['content']+="### User Question:\n"
+        prompt_messages[-1]['content']+="### QUESTION:\n"
         prompt_messages[-1]['content']+=sample['question']
 
         return prompt_messages
+    
+    
     
 
     def __call__(self, the_input, **kwargs):
