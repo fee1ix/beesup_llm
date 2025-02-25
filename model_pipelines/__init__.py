@@ -303,6 +303,9 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         self.logger.debug(f"{self._recent_generation_config}")
 
+        
+        self.prepare_inference()
+
         pipeline_kwargs={
             'text_inputs':the_input,
             'tokenizer':self.pipeline.tokenizer,
@@ -312,6 +315,20 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         return self.pipeline(**pipeline_kwargs)
     
+
+
+    def add_pred_completion(self, pipe_df: pd.DataFrame, **kwargs):
+        
+        if 'prompt_messages' in pipe_df.columns:
+            the_input=list(pipe_df['prompt_messages'].values)
+        
+        elif 'prompt' in pipe_df.columns:
+            the_input=list(pipe_df['prompt'].values)
+
+        the_output=self.get_pipeline_output(the_input, **kwargs)
+
+        pipe_df['pred_completion']=[o[0]['generated_text'] for o in the_output]
+
     def get_pred_df(self, df, **kwargs):
 
         if 'prompt_messages' in df.columns:
@@ -324,13 +341,17 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         df['pred_completion']=[o[0]['generated_text'] for o in the_output]
         return df
+    
 
     def __call__(self, the_input, stream=False, use_chatformat=False, **kwargs):
 
         self.prepare_inference()
 
         if isinstance(the_input, pd.DataFrame):
-            return self.get_pred_df(the_input, **kwargs)
+            self.add_pred_completion(the_input, **kwargs)
+            return the_input
+            
+            #return self.get_pred_df(the_input, **kwargs)
 
         if use_chatformat:
             if isinstance(the_input, str):

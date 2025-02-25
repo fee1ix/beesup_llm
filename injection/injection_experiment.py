@@ -65,14 +65,13 @@ class InjectionExperiment(BaseDirectory):
 
         return multirun_df
 
-    def __init__(self, ref=None, dataset_ref=None, llm_ref=None, ftn_ref=None, eval_refs=[], **kwargs):
+    def __init__(self, ref=None, dataset_ref=None, llm_ref=None, ftn_ref=None, eval_refs=[], rag_ref=None, **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
             done = False,
             seed = 55,
             do_eval_base_model=True,
-            do_eval_rag=True,
             do_finetuning=True,
             remarks='',
             llm_config=dict(
@@ -134,6 +133,10 @@ class InjectionExperiment(BaseDirectory):
         if eval_refs:
             self.evaluators=[Evaluator.from_ref(eval_ref) for eval_ref in eval_refs]
             self.eval_configs=[pipe.get_config() for pipe in self.evaluators]
+        
+        if rag_ref:
+            
+            self.rag_pipe
 
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")
@@ -177,7 +180,7 @@ class InjectionExperiment(BaseDirectory):
             rag_pipe=RAGPipeline(
                 llm_ref=self.llm_pipe,
                 dataset_ref=self.dataset,
-                selectors = [fit_tokn_limit(limit=1000), fit_knee_score()]
+                selectors = [pre_trim_limit(100), fit_tokn_limit(limit=1000), fit_knee_score()]
                 )
 
             for evaluator in self.evaluators:

@@ -1,22 +1,40 @@
 import beesup_llm
 from beesup_llm import *
 from beesup_llm.model_pipelines import *
-from beesup_llm.injection.taxomizer import *
-from rapidfuzz import fuzz
 
 from beesup_llm.injection import *
+from beesup_llm.injection.taxomizer import *
+from beesup_llm.injection.rag_pipeline import RAGPipeline
+from beesup_llm.injection.injection_experiment import InjectionExperiment
+
+
+from rapidfuzz import fuzz
 
 from transformers import TrainerCallback
 
 class EvaluatorCallback(TrainerCallback):
 
-    def __init__(self, evaluator, experiment):
+    def __init__(
+            self,
+            evaluator,
+            experiment: InjectionExperiment,
+            rag_pipe: RAGPipeline = None
+            ):
+        
         self.evaluator=evaluator
         self.experiment=experiment
-        self.name=f"{evaluator.subtype}-{evaluator.id}_callback"
-    
-    def save_df(self, callback_df, state):
-        save_path=f"{self.experiment._path}/{str(int(state.epoch))}-{str(state.global_step)}_{self.name}_df.pkl"
+        self.rag_pipe=rag_pipe
+
+        self.name=f"{evaluator.subtype}:{evaluator.id}"
+
+        if self.rag_pipe:
+            self.name+=f"-rag:{rag_pipe.id}"
+            
+    def save_callback_df(self, callback_df:pd.DataFrame, epoch=0, global_step=0, **kwargs):
+
+        epoch, global_step = int(epoch), int(global_step)
+
+        save_path=f"{self.experiment._path}/{epoch}:{global_step}_{self.name}_callback_df.pkl"
         callback_df.to_pickle(save_path)
         self.experiment.logger.info(f"Saved {self.name} to {save_path}")
     
@@ -35,8 +53,12 @@ class EvaluatorCallback(TrainerCallback):
         model=kwargs['model']
         model.eval()
 
+        if self.rag_pipe:
+            self.rag_pipe.add_briefing_df(self.evaluator.df, **kwargs)
+
         callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
-        self.save_df(callback_df, state)
+        self.save_callback_df(callback_df, **state.__dict__)
+        self.evaluator.load_df()
 
 class MCEEvaluatorCallback(EvaluatorCallback):
     """Multiclass Cross Entropy Loss Evaluator Callback
@@ -72,7 +94,6 @@ class Evaluator(BaseDirectory):
         if MCQEvaluator.matches(pre_config): return MCQEvaluator(ref=pre_config, **kwargs)
         if QDQEvaluator.matches(pre_config): return QDQEvaluator(ref=pre_config, **kwargs)
         if FFQEvaluator.matches(pre_config): return FFQEvaluator(ref=pre_config, **kwargs)
-        if KRQEvaluator.matches(pre_config): return KRQEvaluator(ref=pre_config, **kwargs)
     
         return cls(ref=pre_config, **kwargs)
 
@@ -81,7 +102,7 @@ class Evaluator(BaseDirectory):
         if getattr_or_key(ref, 'subtype') == cls.subtype: return True
         return False
 
-    def __init__(self, ref=None, llm_ref=None, df=None, **kwargs):
+    def __init__(self, ref=None, llm_ref=None, df=pd.DataFrame(), **kwargs):
         super().__init__(ref, **kwargs)
 
         self._default_config=dict(
@@ -103,33 +124,36 @@ class Evaluator(BaseDirectory):
         if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
             self.llm_pipe.update_config(self.llm_config)
-            #self.llm_pipe.update_config(self._default_config['llm_config'])
             self.llm_pipe.update_config_smart(kwargs)
-            #self.llm_config=self.llm_pipe.get_config()
-            #self.update_config(dict(llm_config=self.llm_pipe.get_config()), overwrite_if_conflict=False)
-        
-        
+
+        self.load_df()
+
+        # attach df if provided/ overwrite loaded df
+        if not df.empty:
+            self.df=df
+
+        self.set_df()
+        self.df=self.df.iloc[:7].copy()
+
+    def load_df(self):
         # load source data if available
         if os.path.exists(f"{self._path}/df.pkl"):
             self.df=pd.read_pickle(f"{self._path}/df.pkl")
             self.columns=self.df.columns.tolist()
             self.logger.debug(f"Loaded df from {self._path}/df.pkl")
+            self.set_df()
 
-        # attach df if provided/ overwrite loaded df
-        if df is not None: self.set_df(df)
-    
-    def is_eval_epoch(self, epoch):
-        if self.eval_epochs==[]: return True
-        elif int(epoch) in self.eval_epochs: return True
-    
-    def set_df(self, df=None):
-        if isinstance(df, pd.DataFrame):
-            self.df=df.copy()
-        
+    def set_df(self):   
         self.df.reset_index(drop=True, inplace=True)
         self.n_rows=len(self.df)
         self.columns=self.df.columns.tolist()
         return
+
+    def is_eval_epoch(self, epoch):
+        if self.eval_epochs==[]: return True
+        elif int(epoch) in self.eval_epochs: return True
+    
+
 
     def spawn(self):
         super().spawn()
@@ -139,56 +163,41 @@ class Evaluator(BaseDirectory):
     def get_prompt_messages(self, sample, **kwargs):
 
         prompt_messages=[]
-        prompt_messages.append(dict(role='system', content=get_system_prompt(**kwargs)))
-        prompt_messages.append(dict(role='user', content=self.get_prompt(sample, **kwargs)))
+        prompt_messages.append(dict(role='system', content=get_system_prompt(**sample, **kwargs)))
+        prompt_messages.append(dict(role='user', content=self.get_prompt(**sample, **kwargs)))
         return prompt_messages
         
-    def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
-        if df is None: df=self.df
-        pred_df=df.copy()
+    def get_pipe_df(self, df = pd.DataFrame(), **kwargs):
+        if df.empty: df=self.df
 
-        pred_df['pred_completion']=[dict(info="NotImplemented")] * len(pred_df)
-        return pred_df
+        pipe_df=df.copy()
+        pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
+        return pipe_df
     
-    def get_eval_df(self, pred_df=None, **kwargs):
-        if pred_df is None: pred_df=self.pred_df
-        eval_df=pred_df.copy()
-
-        eval_df['eval_dict']=[dict(info="NotImplemented")] * len(eval_df)
-        return eval_df
-
-    def __call__(self, llm_ref=None, llm_pipe=None, **kwargs):
-
-        if not llm_pipe:
-
-            if llm_ref:
-                llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-                llm_pipe.update_config(self.llm_config)
-                
-            elif hasattr(self, 'llm_pipe'):
-                llm_pipe=self.llm_pipe
+    def add_pred_completion(self, pipe_df: pd.DataFrame, llm_ref=None, **kwargs):
         
-        #PREDICT
-        pred_df=self.get_pred_df(llm_pipe=llm_pipe, **kwargs)
-        # try:
-        #     pred_df=self.get_pred_df(llm_pipe=llm_pipe, **kwargs)
+        if llm_ref:
+            llm_pipe=LanguageModelPipeline.from_ref(llm_ref, **kwargs)
+            llm_pipe.update_config(self.llm_config)
 
-        # except Exception as e:
-        #     pred_df['pred_completion']=f"PredictionError: {e}"
-        #     self.logger.info(f"PredictionError: {e}")
-        self.pred_df=pred_df
+        pipe_df=llm_pipe.add_pred_completion(pipe_df, **kwargs)
+
+    @staticmethod
+    def get_eval_dict(**kwargs):
+        return dict(info="NotImplemented")
+    
+    def add_eval_dict(self, pipe_df: pd.DataFrame, **kwargs):
+        assert 'pred_completion' in pipe_df.columns, "pred_completion missing in pipe_df"
+        pipe_df['eval_dict']=pipe_df.apply(lambda x: self.get_eval_dict(**x, **kwargs), axis=1)
 
 
-        #EVALUATE
-        eval_df=self.pred_df.copy()
-        try:
-            eval_df=self.get_eval_df(pred_df=eval_df, **kwargs)
-        except Exception as e:
-            eval_df['eval_dict']=f"EvaluationError: {e}"
-            self.logger.info(f"EvaluationError: {e}")
-        self.eval_df=eval_df
-            
-        return eval_df
+    def __call__(self, llm_ref=None, **kwargs):
+    
+        pipe_df=self.get_pipe_df(**kwargs)
+        self.add_pred_completion(pipe_df, llm_ref=llm_ref, **kwargs)
+        self.add_eval_dict(pipe_df, **kwargs)
+                
+        return pipe_df
 
 class MCQEvaluator(Evaluator):
     """Multiple Choice Question Evaluator"""
@@ -220,27 +229,32 @@ class MCQEvaluator(Evaluator):
             self.llm_pipe.update_config_smart(kwargs)
             #self.llm_config=self.llm_pipe.get_config()
 
+
+    def get_pipe_df(self, pipe_df = pd.DataFrame(), **kwargs):
+        if pipe_df.empty: pipe_df=self.df.copy()
+
+        assert 'question' in pipe_df.columns, "question missing in df"
+        assert 'choices' in pipe_df.columns, "choices missing in df"
+
+        if 'mmluidx' in pipe_df.columns:
+            #neglect system message if MMLU sample, don't pass kwargs!
+            pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x)[1:], axis=1)
+        
+        else:
+            pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
+        
+        return pipe_df
+
     @staticmethod 
-    def get_prompt(sample, **kwargs):
-        return get_mcq_prompt(sample, **kwargs)
+    def get_prompt(sample=dict(), **kwargs):
+        return get_mcq_prompt(**sample, **kwargs)
 
-    def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
-        if df is None: df=self.df
-        pred_df=df.copy()
-
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
-        if 'mmluidx' in df.columns: pred_df['prompt_messages']=pred_df['prompt_messages'].apply(lambda x: x[1:]) #remove system message if MMLU sample
-
-        pred_df=llm_pipe(pred_df)
-
-        return pred_df
-    
     @staticmethod
-    def get_eval_dict(sample):
+    def get_eval_dict(pred_completion, answer, **kwargs):
 
-        gold_choice=chr(65+int(sample.answer)).lower()
+        gold_choice=chr(65+int(answer)).lower()
 
-        pred_choice=sample.pred_completion.strip().lower()
+        pred_choice=pred_completion.strip().lower()
         pred_choice=re.sub(r'[^a-zA-Z]','',pred_choice)
         pred_choice=pred_choice[:1]
         
@@ -252,13 +266,6 @@ class MCQEvaluator(Evaluator):
 
         return eval_dict
     
-    def get_eval_df(self, pred_df=None, **kwargs):
-        if pred_df is None: pred_df=self.pred_df
-
-        eval_df=pred_df.copy()
-        eval_df['eval_dict']=eval_df.apply(self.get_eval_dict, axis=1)
-
-        return eval_df
 
 class QDQEvaluator(Evaluator):
     """Query Driven Questions Evaluator"""
@@ -288,51 +295,27 @@ class QDQEvaluator(Evaluator):
         if hasattr(self, 'llm_pipe'):
             self.llm_pipe.update_config(self.llm_config)
             self.llm_pipe.update_config_smart(kwargs)
-            #self.llm_config=self.llm_pipe.get_config()
 
-    @staticmethod 
-    def legacy_get_prompt_messages(sample, fewshots_df=None, **kwargs):
+    def get_pipe_df(self, pipe_df = pd.DataFrame(), **kwargs):
+        if pipe_df.empty: pipe_df=self.df.copy()
+        assert 'question' in pipe_df.columns, "question missing in pipe_df"
+        assert 'gold_items' in pipe_df.columns, "gold_items missing in pipe_df"
 
-        prompt_messages=[]
-        prompt_messages.append(dict(role='system', content=get_system_prompt(**kwargs))) #kwargs could pass toc!!
-        prompt_messages[-1]['content']+="\n\n"
-        prompt_messages[-1]['content']+="You are given a question in German that asks for a set of wild bee species meeting specific characteristics. "
-        prompt_messages[-1]['content']+="Your answer should consist of a semicolon-separated list of scientific names of the wild bees. "
-        prompt_messages[-1]['content']+="A scientific name must always follow the format: <genus> <species>. "
-        prompt_messages[-1]['content']+="Do not generate information that is not verifiable! "
-        prompt_messages[-1]['content']+="Only include wild bee species that you are absolutely certain match the described characteristics. "
-        prompt_messages[-1]['content']+="If you are unsure or do not know the answer, please respond with 'I do not know'. "
+        fewshots_df=pipe_df[:self.n_fewshots].copy()
+        pipe_df=pipe_df[self.n_fewshots:].reset_index(drop=True).copy()
+        pipe_df['fewshots_df']=len(pipe_df)*[fewshots_df]
 
-
-        if isinstance(fewshots_df, pd.DataFrame):
-            for _,fewshot in fewshots_df.iterrows():
-                prompt_messages.append(dict(role='user', content=f"{fewshot.question}"))
-                prompt_messages.append(dict(role='assistant', content='; '.join(fewshot.gold_items)))
-        
-        prompt_messages.append(dict(role='user', content=f"{sample.question}"))
-        return prompt_messages
-
-    @staticmethod 
-    def get_prompt(sample, **kwargs):
-        return get_qdq_prompt(sample, **kwargs)
-
-    def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
-        if df is None: df=self.df
-
-        fewshots_df=df[:self.n_fewshots].copy()
-        pred_df=df[self.n_fewshots:].reset_index(drop=True).copy()
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, fewshots_df=fewshots_df, **kwargs), axis=1)
+        pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
 
         # max_new_tokens=int(max([llm_pipe.count_tokens("; ".join(sample.gold_items)) for _,sample in pred_df.iterrows()])*2) #allow maximum twice the number of tokens in the gold items
         # self.logger.info(f"max_new_tokens: {max_new_tokens}")
 
-        pred_df=llm_pipe(pred_df)#, max_new_tokens=max_new_tokens)
-
-        return pred_df
-
+    @staticmethod 
+    def get_prompt(sample=dict(), **kwargs):
+        return get_qdq_prompt(**sample, **kwargs)
 
     @staticmethod
-    def get_eval_dict(sample):
+    def get_eval_dict(pred_completion, gold_items, **kwargs):
 
         def normalize(item_str):
             item_str=item_str.strip()
@@ -343,13 +326,13 @@ class QDQEvaluator(Evaluator):
         tp=0; tp_fuzzy=0.0; fp=0; fn=0
 
         for i_dont_know in ["i don't know", "i do not know", "dont know", "do not know","unsure","unknown"]:
-            if fuzz.ratio(i_dont_know,sample.pred_completion.lower())/100 > 0.9:
+            if fuzz.ratio(i_dont_know,pred_completion.lower())/100 > 0.9:
                 return dict(tp=tp, tp_fuzzy=tp_fuzzy, fp=fp, fn=fn)
 
-        gold_df=pd.DataFrame(sample.gold_items, columns=['gold_item']).reset_index(names=['g'])
+        gold_df=pd.DataFrame(gold_items, columns=['gold_item']).reset_index(names=['g'])
         gold_df['gold_val']=gold_df['gold_item'].apply(normalize)
 
-        pred_items=list(set([c.strip() for c in re.split(r';',sample.pred_completion)]))
+        pred_items=list(set([c.strip() for c in re.split(r';',pred_completion)]))
         pred_df=pd.DataFrame(pred_items, columns=['pred_item']).reset_index(names=['p'])
         pred_df['pred_val']=pred_df['pred_item'].apply(normalize)
 
@@ -396,11 +379,7 @@ class QDQEvaluator(Evaluator):
 
         return dict(tp=tp, tp_fuzzy=tp_fuzzy, fp=fp, fn=fn)
 
-    def get_eval_df(self, pred_df=None, **kwargs):
-        eval_df=pred_df.copy()
-        eval_df['eval_dict']=eval_df.apply(self.get_eval_dict, axis=1)
 
-        return eval_df
 
 class FFQEvaluator(Evaluator):
     """Free Form Question Evaluator"""
@@ -433,15 +412,6 @@ class FFQEvaluator(Evaluator):
             #self.llm_config=self.llm_pipe.get_config()
 
     @staticmethod 
-    def get_prompt(sample,**kwargs):
-        return get_ffq_prompt(sample, **kwargs)
+    def get_prompt(sample=dict(),**kwargs):
+        return get_ffq_prompt(**sample, **kwargs)
     
-  
-    def get_pred_df(self, df=None, llm_pipe=None, **kwargs):
-        if df is None: df=self.df
-        pred_df=df.copy()
-
-        pred_df['prompt_messages']=pred_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
-        pred_df=llm_pipe(pred_df)
-
-        return pred_df
