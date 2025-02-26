@@ -83,6 +83,11 @@ def assign_colors_tree(node, hue_start=0, hue_end=1, depth=0):
 import math
 from IPython.display import display, clear_output, HTML
 
+def print_prompt_messages(prompt_messages):
+    for message in prompt_messages:
+        print(message['role'])
+        print(message['content'], end='\n\n')
+
 def print_multicol(cols):
     col_width=math.floor(100/len(cols))
     html_content=""

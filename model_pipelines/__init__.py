@@ -6,6 +6,8 @@ import torch
 import logging
 import pandas as pd
 
+
+
 class BaseModelPipeline(BaseDirectory):
     type='model_pipeline'
 
@@ -101,6 +103,9 @@ from transformers import \
     set_seed, \
     TextGenerationPipeline, \
     TextIteratorStreamer
+
+
+logging.getLogger("transformers").setLevel(logging.ERROR)
     
 class LanguageModelPipeline(BaseModelPipeline):
     type='llm_pipeline'
@@ -191,6 +196,25 @@ class LanguageModelPipeline(BaseModelPipeline):
 
         return
     
+    def load_tokenizer(self, tokenizer_type='inference'):
+                
+        setattr(self, f'{tokenizer_type}_tokenizer', AutoTokenizer.from_pretrained(
+            self.name_or_path,
+            **getattr(self, f'{tokenizer_type}_tokenizer_config')
+        ))
+
+        return
+    
+    def get_tokenizer(self, tokenizer_type='inference'):
+
+        tokenizer=getattr(self, f'{tokenizer_type}_tokenizer', None)
+        if tokenizer is None:
+            self.load_tokenizer(tokenizer_type)
+            tokenizer=getattr(self, f'{tokenizer_type}_tokenizer')
+            return tokenizer
+        
+        else:
+            return tokenizer
     
     def load_inference_tokenizer(self):
 
@@ -235,12 +259,12 @@ class LanguageModelPipeline(BaseModelPipeline):
         else:
             return self.training_tokenizer
 
-    def count_tokens(self, the_input):
+    def count_tokens(self, pipe_input):
         tokenizer=self.get_inference_tokenizer()
-        return sum(tokenizer(the_input, return_length=True)['length'])
+        return sum(tokenizer(pipe_input, return_length=True)['length'])
 
     def load_pipeline(self,**kwargs):
-        self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer,**kwargs)
+        self.pipeline = TextGenerationPipeline(model=self.model, tokenizer=self.inference_tokenizer, **kwargs)
 
     def get_pipeline(self, **kwargs):
         pipeline=getattr(self, 'pipeline', None)
@@ -256,19 +280,21 @@ class LanguageModelPipeline(BaseModelPipeline):
     def prepare_inference(self):
 
         if not hasattr(self, 'model'): self.load_model()
-        if not hasattr(self, 'inference_tokenizer'): self.load_inference_tokenizer()
+        if not hasattr(self, 'inference_tokenizer'): self.load_tokenizer('inference')
         if not hasattr(self, 'pipeline'): self.load_pipeline()
     
-    def get_pipeline_stream(self, the_input, **kwargs):
+    def yield_completion_stream(self, pipe_input, **kwargs):
 
-        streamer = TextIteratorStreamer(self.inference_tokenizer,skip_prompt=True)
-        self.load_pipeline(streamer=streamer, **kwargs)
+        self.prepare_inference()
+        streamer = TextIteratorStreamer(self.inference_tokenizer, skip_prompt=True)
+
+        self.load_pipeline(streamer=streamer)
 
         generation_config=self.get_updated_config(kwargs, config_key='generation_config')
         self._recent_generation_config=generation_config
 
         pipeline_kwargs={
-            'text_inputs':the_input,
+            'text_inputs':pipe_input,
             'tokenizer':self.pipeline.tokenizer,
             'generation_config':GenerationConfig.from_dict(generation_config),
             **self.get_updated_config(kwargs, config_key='pipeline_args')
@@ -279,6 +305,7 @@ class LanguageModelPipeline(BaseModelPipeline):
         try:
             streamer_thread.start()
             for new_token in streamer:
+                if new_token in self.pipeline.tokenizer.special_tokens_map.values(): continue
                 yield new_token
 
             streamer_thread.join()
@@ -291,12 +318,20 @@ class LanguageModelPipeline(BaseModelPipeline):
         
         del streamer
         del self.pipeline
-        
         return
+    
+    def print_completion_stream(self, pipe_input, **kwargs):
 
-    def get_pipeline_output(self, the_input, **kwargs):
+        completion=""
+        for new_token in self.yield_completion_stream(pipe_input, **kwargs):
+            print(new_token, end='', flush=True)
+            completion+=new_token
+        
+        return completion
 
-        self.logger.debug(f"the_input: {the_input}, kwargs: {kwargs}")
+    def get_output(self, pipe_input, **kwargs):
+
+        self.logger.debug(f"pipe_input: {pipe_input}, kwargs: {kwargs}")
 
         generation_config=self.get_updated_config(kwargs, config_key='generation_config')
         self._recent_generation_config=generation_config
@@ -307,69 +342,67 @@ class LanguageModelPipeline(BaseModelPipeline):
         self.prepare_inference()
 
         pipeline_kwargs={
-            'text_inputs':the_input,
+            'text_inputs':pipe_input,
             'tokenizer':self.pipeline.tokenizer,
             'generation_config':GenerationConfig.from_dict(generation_config),
             **self.get_updated_config(kwargs, config_key='pipeline_args')
         }
-
         return self.pipeline(**pipeline_kwargs)
     
-
-
+    def get_pred_completion(self, pipe_input, **kwargs):
+        return self.get_output(pipe_input, **kwargs)[0]['generated_text']
+    
     def add_pred_completion(self, pipe_df: pd.DataFrame, **kwargs):
         
         if 'prompt_messages' in pipe_df.columns:
-            the_input=list(pipe_df['prompt_messages'].values)
+            pipe_input=list(pipe_df['prompt_messages'].values)
         
         elif 'prompt' in pipe_df.columns:
-            the_input=list(pipe_df['prompt'].values)
+            pipe_input=list(pipe_df['prompt'].values)
 
-        the_output=self.get_pipeline_output(the_input, **kwargs)
+        the_output=self.get_output(pipe_input, **kwargs)
 
         pipe_df['pred_completion']=[o[0]['generated_text'] for o in the_output]
 
-    def get_pred_df(self, df, **kwargs):
+    def call_on_dataframe(self, pipe_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        self.add_pred_completion(pipe_df, **kwargs)
+        return pipe_df
 
-        if 'prompt_messages' in df.columns:
-            the_input=list(df['prompt_messages'].values)
-        
-        elif 'prompt' in df.columns:
-            the_input=list(df['prompt'].values)
-
-        the_output=self.get_pipeline_output(the_input, **kwargs)
-
-        df['pred_completion']=[o[0]['generated_text'] for o in the_output]
-        return df
-    
-
-    def __call__(self, the_input, stream=False, use_chatformat=False, **kwargs):
-
-        self.prepare_inference()
-
-        if isinstance(the_input, pd.DataFrame):
-            self.add_pred_completion(the_input, **kwargs)
-            return the_input
-            
-            #return self.get_pred_df(the_input, **kwargs)
+    def call_on_single(self, pipe_input: Union[str, list], use_chatformat=False, stream=False, **kwargs) -> str:
 
         if use_chatformat:
-            if isinstance(the_input, str):
-                the_input=[{'role':'user','content':the_input}]
+            if isinstance(pipe_input, str):
+                pipe_input=[{'role':'user','content':pipe_input}]
             
-            elif isinstance(the_input, list) and all(isinstance(x, str) for x in the_input):
-                the_input=[[{'role':'user','content':x}] for x in the_input]
-   
-
+            elif isinstance(pipe_input, list) and all(isinstance(x, str) for x in pipe_input):
+                pipe_input=[[{'role':'user','content':x}] for x in pipe_input]
+        
         if stream:
-            pred_completion=""
-            for new_token in self.get_pipeline_stream(the_input, **kwargs):
-                pred_completion+=new_token
-                print(new_token,end='',flush=True)
-            return pred_completion
+            return self.print_completion_stream(pipe_input, **kwargs)
+        else:
+            return self.get_pred_completion(pipe_input, **kwargs)
+
+    def call_on_sample(self, sample: Union[pd.Series, dict], **kwargs) -> str:
+
+        if 'prompt_messages' in sample:
+            pipe_input=sample['prompt_messages']
+        elif 'prompt' in sample:
+            pipe_input=sample['prompt']
+        
+        return self.call_on_single(pipe_input, **kwargs)
+
+    def __call__(self, pipe_input, stream=False, use_chatformat=False, **kwargs):
+
+        if isinstance(pipe_input, pd.DataFrame):
+            return self.call_on_dataframe(pipe_input, **kwargs)
+        
+        elif isinstance(pipe_input, (pd.Series, dict)):
+            return self.call_on_sample(pipe_input, **kwargs)
         
         else:
-            return self.get_pipeline_output(the_input, **kwargs)
+            return self.call_on_single(pipe_input, use_chatformat=use_chatformat, stream=stream, **kwargs)
+        
+
         
 class LlamaPipeline(LanguageModelPipeline):
 

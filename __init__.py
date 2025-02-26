@@ -12,7 +12,7 @@ from .toolkit.setup_utils import *
 #from beesup_llm.evaluation import BaseEvaluation
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
 
@@ -104,7 +104,6 @@ class BaseDirectory(object):
             overview_data.append(overview_row)
         
         return pd.DataFrame(overview_data)
-
 
     def __init__(self, ref=None, **kwargs):
 
