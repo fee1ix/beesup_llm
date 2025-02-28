@@ -185,6 +185,7 @@ class RAGPipeline(BaseDirectory):
 
         if dataset_ref:
             dataset=BaseDataset.from_ref(dataset_ref)
+            self.dataset_config=self.dataset.get_config()
             dataset_df=dataset.df
 
             if not dataset.parent_config: self.logger.warning('Dataset has no parent config')
@@ -195,11 +196,13 @@ class RAGPipeline(BaseDirectory):
             dataset_df=dataset_df.merge(parent_df[add_cols+[f"{self.emb_col}_emb"]], left_on='kidx', right_index=True, how='left')
             dataset_df.rename(columns={f"{self.emb_col}_emb":'emb', f"{self.chunk_col}":'chunk'}, inplace=True)
             self.df=dataset_df
+            
    
         if llm_ref:
             self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
             self.llm_pipe.update_config(self.llm_config)
             self.llm_pipe.update_config_smart(kwargs)
+
         
         self.selectors=[]
         if selector_refs:
@@ -281,9 +284,6 @@ class RAGPipeline(BaseDirectory):
     def add_prompt_messages(self, pipe_df: pd.DataFrame, **kwargs):
         pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(**x, **kwargs), axis=1)
 
-
-
-
     def call_on_dataframe(self, pipe_df:pd.DataFrame, **kwargs) -> pd.DataFrame:
 
         self.add_ranking_df(pipe_df)
@@ -319,8 +319,6 @@ class RAGPipeline(BaseDirectory):
     def call_on_sample(self, sample: Union[pd.Series, dict], **kwargs) -> str:
         return self.call_on_single(**sample, **kwargs)
 
-
-    
     def __call__(self, pipe_input, **kwargs):
 
         if isinstance(pipe_input, pd.DataFrame):
