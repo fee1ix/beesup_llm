@@ -148,68 +148,85 @@ class FitKneeScore(RAGSelector):
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-class RAGPipeline(BaseDirectory):
+from labtools import LabHandler
+
+class RAGPipeline(object):
     type='rag_pipeline'
 
     def __init__(
             self,
             ref=None,
-            llm_ref=None,
-            dataset_ref=None,
-            selector_refs: list = [],
+            llm_pipe=None,
+            data=None,
+            #dataset=None,
+            selectors: list = [],
+            lab_handler=LabHandler(),
             **kwargs):
-        super().__init__(ref, **kwargs)
+        
+        self.emb_col = kwargs.get('emb_col', 'spo')
+        self.chunk_col = kwargs.get('chunk_col', 'spo')
 
-        self._default_config=dict(
-            emb_col='spo',
-            chunk_col='spo',
-            llm_config=dict(
-                generation_config=dict(
-                    max_new_tokens=4096,
-                    max_time=1200,
-                ),
-            ),
-            selector_configs=[]
-        )
 
-        self._config_key_order.extend(list(self._default_config.keys()))
-        self._config_keys_to_exclude.extend(['llm_pipe','dataset','selectors'])
+        # self._default_config=dict(
+        #     emb_col='spo',
+        #     chunk_col='spo',
+        #     llm_config=dict(
+        #         generation_config=dict(
+        #             max_new_tokens=4096,
+        #             max_time=1200,
+        #         ),
+        #     ),
+        #     selector_configs=[]
+        # )
 
-        self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.update_config_smart(kwargs)
+        if lab_handler is not None:
+            self.lab=lab_handler
+            self.lab.attach(locals())
 
-        if self.is_spawned():
-            if llm_ref==None: llm_ref=self.llm_config
-            dataset_ref=self.dataset_config
-            selector_refs=self.selector_configs
 
-        if dataset_ref:
-            dataset=BaseDataset.from_ref(dataset_ref)
-            self.dataset_config=self.dataset.get_config()
-            dataset_df=dataset.df
+        # if isinstance(llm_pipe, LanguageModelPipeline):
+        #     self.llm_pipe=llm_pipe
+        #     self.llm_pipe.generation_config.max_time=1200
 
-            if not dataset.parent_config: self.logger.warning('Dataset has no parent config')
-            parent_df=BaseDataset(dataset.parent_config).df
 
-            # add embedding combinations
-            add_cols=[self.chunk_col,'source_name','attr_type','n_units','n_words']
-            dataset_df=dataset_df.merge(parent_df[add_cols+[f"{self.emb_col}_emb"]], left_on='kidx', right_index=True, how='left')
-            dataset_df.rename(columns={f"{self.emb_col}_emb":'emb', f"{self.chunk_col}":'chunk'}, inplace=True)
-            self.df=dataset_df
+        # self._config_key_order.extend(list(self._default_config.keys()))
+        # self._config_keys_to_exclude.extend(['llm_pipe','dataset','selectors'])
+
+        # self.update_config(self._default_config, overwrite_if_conflict=False)
+        # self.update_config_smart(kwargs)
+
+        # if self.is_spawned():
+        #     if llm_ref==None: llm_ref=self.llm_config
+        #     dataset_ref=self.dataset_config
+        #     selector_refs=self.selector_configs
+
+        # if dataset_ref:
+        #     dataset=BaseDataset.from_ref(dataset_ref)
+        #     self.dataset_config=self.dataset.get_config()
+        #     dataset_df=dataset.df
+
+        #     if not dataset.parent_config: self.logger.warning('Dataset has no parent config')
+        #     parent_df=BaseDataset(dataset.parent_config).df
+
+        #     # add embedding combinations
+        #     add_cols=[self.chunk_col,'source_name','attr_type','n_units','n_words']
+        #     dataset_df=dataset_df.merge(parent_df[add_cols+[f"{self.emb_col}_emb"]], left_on='kidx', right_index=True, how='left')
+        #     dataset_df.rename(columns={f"{self.emb_col}_emb":'emb', f"{self.chunk_col}":'chunk'}, inplace=True)
+        #     self.df=dataset_df
             
    
-        if llm_ref:
-            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            self.llm_pipe.update_config(self.llm_config)
-            self.llm_pipe.update_config_smart(kwargs)
+        # if llm_ref:
+        #     self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
+        #     self.llm_pipe.update_config(self.llm_config)
+        #     self.llm_pipe.update_config_smart(kwargs)
 
         
-        self.selectors=[]
-        if selector_refs:
-            self.selectors=[RAGSelector.from_ref(ref) for ref in selector_refs]
-            self.selector_configs=[s.__dict__ for s in self.selectors]
+        # self.selectors=[]
+        # if selector_refs:
+        #     self.selectors=[RAGSelector.from_ref(ref) for ref in selector_refs]
+        #     self.selector_configs=[s.__dict__ for s in self.selectors]
 
-        self.add_selector_features()
+        # self.add_selector_features()
     
     def add_selector_features(self):
 

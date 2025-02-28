@@ -401,10 +401,8 @@ class LanguageModelPipeline(BaseModelPipeline):
         
         else:
             return self.call_on_single(pipe_input, use_chatformat=use_chatformat, stream=stream, **kwargs)
-        
 
-        
-class LlamaPipeline(LanguageModelPipeline):
+class Llama2Pipeline(LanguageModelPipeline):
 
     @staticmethod
     def matches(ref):
@@ -567,7 +565,74 @@ class PhiPipeline(LanguageModelPipeline):
             allow_new_atomic_keys=False, 
             allow_new_nested_keys=False
         )
+################
 
+from labtools import LabHandler
+
+class LLMPipeline(object):
+
+    def __init__(self, ref=None, lab_handler=LabHandler(), **kwargs):
+
+
+        if isinstance(ref, torch.nn.Module):
+            self.model=ref; del ref
+            self.name_or_path=getattr(self.model, 'name_or_path', None)
+        else:
+            self.name_or_path=kwargs.get('name_or_path', None)
+
+        self.generation_config=dict()
+        self.generation_config['return_dict_in_generate']=False
+        self.generation_config['max_time']=kwargs.get('max_time',600)
+        self.generation_config['do_sample']=kwargs.get('do_sample',False)
+        self.generation_config['stop_strings']=kwargs.get('stop_strings',None)
+        self.generation_config['max_new_tokens']=kwargs.get('max_new_tokens',1000)
+
+        
+        if lab_handler is not None:
+            self.lab=lab_handler
+            self.lab.attach(locals())
+    
+    
+    def load_model(self):
+        self.logger.info(f"Loading model {self.name_or_path}")
+        self.model=AutoModelForCausalLM.from_pretrained(
+            self.name_or_path,
+            device_map="auto",
+            quantization_config=BitsAndBytesConfig(
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type='nf4',
+                ),
+        )
+
+        return
+
+class LlamaPipeline(LLMPipeline):
+
+    def __init__(self, ref=None, **kwargs):
+        super().__init__(ref, **kwargs)
+
+        self.name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct'
+
+        self.generation_config['pad_token']='<|begin_of_text|>'
+        self.generation_config['pad_token_id']=128000
+
+        self.inference_tokenizer_config=dict()
+        self.inference_tokenizer_config['max_length']=8192
+        self.inference_tokenizer_config['pad_token']='<|begin_of_text|>'
+        self.inference_tokenizer_config['pad_token_id']=128000
+
+        self.training_tokenizer_config=dict()
+        self.training_tokenizer_config['max_length']=8192
+        self.training_tokenizer_config['pad_token']='<|end_of_text|>'
+        self.training_tokenizer_config['pad_token_id']=128001
+
+
+  
+
+
+###############
 
 from transformers import AutoModel
 
@@ -644,7 +709,6 @@ class EmbeddingModelPipeline(BaseModelPipeline):
 
         return
 
-
 class NVEmbedPipeline(EmbeddingModelPipeline):
 
     @staticmethod
@@ -674,4 +738,4 @@ class NVEmbedPipeline(EmbeddingModelPipeline):
             allow_new_nested_keys=False
         )
 
-    
+
