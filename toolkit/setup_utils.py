@@ -59,19 +59,6 @@ def set_config(config,path=None):
 
     save_yaml(config, path)
 
-def extract_lab_path(path):
-
-    # Traverse upwards to find the first directory that ends with '_lab'
-    while path != os.path.dirname(path):  # Loop until root directory is reached
-        dir_name = os.path.basename(path)
-        if dir_name.endswith('_lab'):
-            return path # Stop once the first matching directory is found
-
-        # Move up one directory level
-        path = os.path.dirname(path)
-
-    # If no directory ending with '_lab' was found
-    raise FileNotFoundError("No directory ending with '_lab' found in the path.")
 
 from pathlib import Path
 def get_lab_name(path=None):
@@ -98,7 +85,6 @@ def get_path_until(dir_name, path=None, include_dir=False):
     
     return str(Path(*parts))
 
-
 def get_lab_path(lab_name=None):
 
     current_lab_name = get_lab_name()
@@ -117,13 +103,6 @@ def get_lab_path(lab_name=None):
         return f"{labs_path}/{lab_name}"
 
 
-
-# def get_lab_path(lab_name=None):
-
-#     if not lab_name: lab_name = get_lab_name()
-#     abs_path = get_path_until(lab_name,include_dir=False)
-
-#     return f"{abs_path}/{lab_name}"
 
 def update_nested_dict(original, updates, overwrite=True):
     for key, value in updates.items():
@@ -158,7 +137,6 @@ def hasattr_or_key(obj, key):
 
 def hasattrs_or_keys(obj, keys):
     return all(hasattr_or_key(obj, key) for key in keys)
-
 
 def getattr_or_key(obj, key, val=None):
     # Check if it's a dictionary and contains the key
@@ -282,8 +260,6 @@ def get_config_from_id(id, **kwargs):
 
     lab_path = get_lab_path(lab_name)
     dir_path = f"{lab_path}/{dir_name}"
-
-    #abs_path = f"{get_path_until(lab_name,include_dir=False)}/{lab_name}/{dir_name}"
 
     assert os.path.exists(dir_path), f"{dir_path} does not exist"
     config_dict = load_dict(f"{dir_path}/{str(id).zfill(4)}_{type}/config.yaml")

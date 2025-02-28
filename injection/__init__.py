@@ -58,7 +58,7 @@ def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs)
     return prompt.strip()
 
 
-def get_context(briefing_df=pd.DataFrame(), chunk_col='chunk', **kwargs):
+def get_context(briefing_df=pd.DataFrame(), chunk_col='chunk', prefix="", suffix="", **kwargs):
 
     #RAG BRIEFING if briefing_df is passed
     context=""
@@ -70,6 +70,9 @@ def get_context(briefing_df=pd.DataFrame(), chunk_col='chunk', **kwargs):
         context+="### CONTEXT:\n\n"
         for _,row in briefing_df.iterrows():
             context+=f"{row[chunk_col]}\n\n"
+    
+    if context:
+        context=f"{prefix}{context.strip()}{suffix}"
 
     return context
 
@@ -84,7 +87,7 @@ def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
     prompt=prompt.strip()
 
     #RAG BRIEFING if briefing_df is passed
-    prompt+=get_context(briefing_df, **kwargs)
+    prompt+=get_context(briefing_df, prefix="\n\n", suffix="", **kwargs)
 
     prompt+=f"\n\n### QUESTION:\n\n"
     prompt+=f"{question}\n\n"
@@ -118,21 +121,19 @@ def get_qdq_prompt(question, fewshots_df=pd.DataFrame(), briefing_df=pd.DataFram
             prompt+=f"QUESTION: {fewshot.question} "
             prompt+=f"ANSWER: {'; '.join(fewshot.gold_items)}\n\n"
 
-    prompt+="\n"
-
     #RAG BRIEFING if briefing_df is passed
-    prompt+=get_context(briefing_df, **kwargs)
+    prompt+=get_context(briefing_df,prefix="\n", suffix="\n\n", **kwargs)
 
-    prompt+=f"\n\n### QUESTION: "
+    prompt+=f"\n### QUESTION: "
     prompt+=f"{question}\n"
-    prompt+="\n### ANSWER: "
+    prompt+="### ANSWER: "
     return prompt
             
 def get_ffq_prompt(question, briefing_df=pd.DataFrame(), **kwargs):
      
     prompt=""
     if not briefing_df.empty:
-        prompt+=get_context(briefing_df, **kwargs)
+        prompt+=get_context(briefing_df, suffix="\n\n", **kwargs)
         prompt+="### QUESTION:\n"
 
     prompt+=f"{question}"

@@ -54,11 +54,13 @@ class EvaluatorCallback(TrainerCallback):
         model.eval()
 
         if self.rag_pipe:
+            self.rag_pipe.add_ranking_df(self.evaluator.df, **kwargs)
             self.rag_pipe.add_briefing_df(self.evaluator.df, **kwargs)
+            
 
         callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
         self.save_callback_df(callback_df, **state.__dict__)
-        self.evaluator.load_df()
+        self.evaluator.load_df() #reload evaluator df to remove ranking and briefing columns
 
 class MCEEvaluatorCallback(EvaluatorCallback):
     """Multiclass Cross Entropy Loss Evaluator Callback
@@ -238,6 +240,7 @@ class MCQEvaluator(Evaluator):
 
         if 'mmluidx' in pipe_df.columns:
             #neglect system message if MMLU sample, don't pass kwargs!
+            pipe_df.drop(columns=['briefing_df'], inplace=True, errors='ignore')
             pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x)[1:], axis=1)
         
         else:
@@ -309,6 +312,7 @@ class QDQEvaluator(Evaluator):
 
         # max_new_tokens=int(max([llm_pipe.count_tokens("; ".join(sample.gold_items)) for _,sample in pred_df.iterrows()])*2) #allow maximum twice the number of tokens in the gold items
         # self.logger.info(f"max_new_tokens: {max_new_tokens}")
+        return pipe_df
 
     @staticmethod 
     def get_prompt(sample=dict(), **kwargs):
