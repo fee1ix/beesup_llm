@@ -149,16 +149,15 @@ class FitKneeScore(RAGSelector):
 from sklearn.metrics.pairwise import cosine_similarity
 
 from labtools import LabHandler
+from labtools.data import DataHandle
 
 class RAGPipeline(object):
-    type='rag_pipeline'
 
     def __init__(
             self,
             ref=None,
+            dataset=None,
             llm_pipe=None,
-            data=None,
-            #dataset=None,
             selectors: list = [],
             lab_handler=LabHandler(),
             **kwargs):
@@ -166,39 +165,27 @@ class RAGPipeline(object):
         self.emb_col = kwargs.get('emb_col', 'spo')
         self.chunk_col = kwargs.get('chunk_col', 'spo')
 
-
-        # self._default_config=dict(
-        #     emb_col='spo',
-        #     chunk_col='spo',
-        #     llm_config=dict(
-        #         generation_config=dict(
-        #             max_new_tokens=4096,
-        #             max_time=1200,
-        #         ),
-        #     ),
-        #     selector_configs=[]
-        # )
-
         if lab_handler is not None:
             self.lab=lab_handler
-            self.lab.attach(locals())
+            llm_pipe, dataset = self.lab.attach(locals(), preinit_keys=['llm_pipe','dataset'])
+        
+        if isinstance(llm_pipe, LLMPipeline):
+            self.llm_pipe = llm_pipe
+            self.llm_pipe.generation_config['max_time'] = 1200
+            self.llm_pipe.generation_config['max_new_tokens'] = 4096
 
 
-        # if isinstance(llm_pipe, LanguageModelPipeline):
-        #     self.llm_pipe=llm_pipe
-        #     self.llm_pipe.generation_config.max_time=1200
+        print(type(dataset))
+        if isinstance(dataset, pd.DataFrame):
+            print('dataset is pd.DataFrame')
+            self.df=dataset
 
 
-        # self._config_key_order.extend(list(self._default_config.keys()))
-        # self._config_keys_to_exclude.extend(['llm_pipe','dataset','selectors'])
 
-        # self.update_config(self._default_config, overwrite_if_conflict=False)
-        # self.update_config_smart(kwargs)
+        
+        if selectors:
+            self.selectors = [RAGSelector.from_ref(s) for s in selectors]
 
-        # if self.is_spawned():
-        #     if llm_ref==None: llm_ref=self.llm_config
-        #     dataset_ref=self.dataset_config
-        #     selector_refs=self.selector_configs
 
         # if dataset_ref:
         #     dataset=BaseDataset.from_ref(dataset_ref)
