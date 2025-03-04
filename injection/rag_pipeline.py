@@ -28,7 +28,7 @@ def plot_ranking(ranking_df: pd.DataFrame, selectors: list=[], question: str='')
         handles.append(matplotlib.lines.Line2D([0], [0], color=color, lw=4, label=f'{col} ({idx}; {val:.2f})'))
 
     plt.legend(handles=handles)
-    plt.title(f'Chunks sorted by score\n{question}'.strip())
+    plt.title(f'texts sorted by score\n{question}'.strip())
 
     plt.xlabel('rank')
     plt.ylabel('score')
@@ -36,9 +36,9 @@ def plot_ranking(ranking_df: pd.DataFrame, selectors: list=[], question: str='')
     plt.show()
 
 
-# Selector Classes: Used to select which first n chunks will be included to the briefing
-# input: ranking_df .. chunks sorted decreasingly by score + selection criteria
-# output: list of booleans, True if chunk should be included, False otherwise
+# Selector Classes: Used to select which first n texts will be included to the briefing
+# input: ranking_df .. texts sorted decreasingly by score + selection criteria
+# output: list of booleans, True if text should be included, False otherwise
 
 class RAGSelector(object):
     type='rag_selector'
@@ -65,7 +65,7 @@ class RAGSelector(object):
     
 class PreTrimLimit(RAGSelector):
     """
-    Selects the first n chunks, reduces complexity for following operations
+    Selects the first n texts, reduces complexity for following operations
     """
     def __init__(self, limit=100, **kwargs):
         super().__init__()
@@ -80,7 +80,7 @@ class PreTrimLimit(RAGSelector):
 
 class FitTokenLimit(RAGSelector):
     """
-    Selects chunks until the cumulative number of tokens reaches the limit
+    Selects texts until the cumulative number of tokens reaches the limit
     """
     def __init__(self, limit=500, **kwargs):
         super().__init__()
@@ -93,7 +93,7 @@ class FitTokenLimit(RAGSelector):
         tokenizer=kwargs['tokenizer']
 
         if 'n_tokens' not in chunks_df.columns:
-            chunks_df['n_tokens'] = chunks_df['chunk'].apply(lambda x: len(tokenizer(x)['input_ids']))
+            chunks_df['n_tokens'] = chunks_df['text'].apply(lambda x: len(tokenizer(x)['input_ids']))
     
         return 
     
@@ -104,7 +104,7 @@ class FitTokenLimit(RAGSelector):
 
 class FitCharLimit(RAGSelector):
     """
-    Selects chunks until the cumulative number of characters reaches the limit
+    Selects texts until the cumulative number of characters reaches the limit
     """
     def __init__(self, limit=500, **kwargs):
         super().__init__()
@@ -113,7 +113,7 @@ class FitCharLimit(RAGSelector):
     @staticmethod
     def add_feature(chunks_df: pd.DataFrame, **kwargs):
         if 'n_chars' not in chunks_df.columns:
-            chunks_df['n_chars'] = chunks_df['chunk'].apply(len)
+            chunks_df['n_chars'] = chunks_df['text'].apply(len)
     
     def get_mask(self, ranking_df: pd.DataFrame) -> list:
         assert 'n_chars' in ranking_df.columns, "n_chars column missing in ranking_df"
@@ -123,7 +123,7 @@ class FitCharLimit(RAGSelector):
 from kneed import KneeLocator
 class FitKneeScore(RAGSelector):
     """
-    Selects chunks with scores above the knee score
+    Selects texts with scores above the knee score
     """
     def __init__(self, curve="convex", direction="decreasing", **kwargs):
         super().__init__()
@@ -148,44 +148,47 @@ class FitKneeScore(RAGSelector):
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from labtools import LabHandler
-from labtools.data import DataHandle
+from labtools import Labhandler
+from labtools.data import Datahandle
 
 class RAGPipeline(object):
+
+    @staticmethod
+    def fit_llm_pipe(llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
+        llm_pipe.generation_config['max_time'] = 1200
+        llm_pipe.generation_config['max_new_tokens'] = 4096
+        return llm_pipe
 
     def __init__(
             self,
             ref=None,
-            dataset=None,
+            label:str=None,
+            data=None,
             llm_pipe=None,
             selectors: list = [],
-            lab_handler=LabHandler(),
+            labh=Labhandler(),
             **kwargs):
         
         self.emb_col = kwargs.get('emb_col', 'spo')
-        self.chunk_col = kwargs.get('chunk_col', 'spo')
+        self.text_col = kwargs.get('text_col', 'spo')
 
-        if lab_handler is not None:
-            self.lab=lab_handler
-            llm_pipe, dataset = self.lab.attach(locals(), preinit_keys=['llm_pipe','dataset'])
+        if labh is not None:
+            self.labh=labh
+            llm_pipe, data, selectors = self.labh.attach(locals(), var_names=['llm_pipe', 'data', 'selectors'])
         
         if isinstance(llm_pipe, LLMPipeline):
+            llm_pipe = self.fit_llm_pipe(llm_pipe)
             self.llm_pipe = llm_pipe
-            self.llm_pipe.generation_config['max_time'] = 1200
-            self.llm_pipe.generation_config['max_new_tokens'] = 4096
+    
+        if isinstance(data, pd.DataFrame):
+            df=data.copy()
+            df.rename(columns={f"{self.emb_col}_emb":"emb", f"{self.text_col}":"text"}, inplace=True)
+            df=df[['text','emb']]
+            self.df = df
+            self.add_selector_features()
 
-
-        print(type(dataset))
-        if isinstance(dataset, pd.DataFrame):
-            print('dataset is pd.DataFrame')
-            self.df=dataset
-
-
-
-        
         if selectors:
             self.selectors = [RAGSelector.from_ref(s) for s in selectors]
-
 
         # if dataset_ref:
         #     dataset=BaseDataset.from_ref(dataset_ref)
@@ -196,9 +199,9 @@ class RAGPipeline(object):
         #     parent_df=BaseDataset(dataset.parent_config).df
 
         #     # add embedding combinations
-        #     add_cols=[self.chunk_col,'source_name','attr_type','n_units','n_words']
+        #     add_cols=[self.text_col,'source_name','attr_type','n_units','n_words']
         #     dataset_df=dataset_df.merge(parent_df[add_cols+[f"{self.emb_col}_emb"]], left_on='kidx', right_index=True, how='left')
-        #     dataset_df.rename(columns={f"{self.emb_col}_emb":'emb', f"{self.chunk_col}":'chunk'}, inplace=True)
+        #     dataset_df.rename(columns={f"{self.emb_col}_emb":'emb', f"{self.text_col}":'text'}, inplace=True)
         #     self.df=dataset_df
             
    
@@ -214,11 +217,10 @@ class RAGPipeline(object):
         #     self.selector_configs=[s.__dict__ for s in self.selectors]
 
         # self.add_selector_features()
-    
+
     def add_selector_features(self):
 
-        tokenizer=self.llm_pipe.get_inference_tokenizer()
-
+        tokenizer=self.llm_pipe.get_tokenizer()
         for selector in self.selectors:
             selector.add_feature(self.df, tokenizer=tokenizer)
  
@@ -227,10 +229,10 @@ class RAGPipeline(object):
     def add_ranking_df(self, pipe_df: pd.DataFrame) -> None:
         assert 'question_emb' in pipe_df, "question_emb missing in samples"
 
-        chunk_embs=np.vstack(self.df['emb'].values)
+        text_embs=np.vstack(self.df['emb'].values)
         question_embs=np.vstack(pipe_df['question_emb'].values)
 
-        score_matrix=cosine_similarity(question_embs,chunk_embs)
+        score_matrix=cosine_similarity(question_embs,text_embs)
         index_matrix=np.argsort(-score_matrix, axis=1)
         score_matrix=-np.sort(-score_matrix, axis=1) #sort scores descending
 
@@ -250,11 +252,11 @@ class RAGPipeline(object):
         #display(question_df)
         return question_df['ranking_df'].values[0]
 
-        # chunk_embs=np.vstack(self.df['emb'].values)
+        # text_embs=np.vstack(self.df['emb'].values)
         # question_emb=sample['question_emb']
 
         # ranking_df=self.df.copy()
-        # ranking_df['score']=cosine_similarity(question_emb.reshape(1,-1),chunk_embs)[0]
+        # ranking_df['score']=cosine_similarity(question_emb.reshape(1,-1),text_embs)[0]
         # ranking_df=ranking_df.sort_values('score', ascending=False)
 
         # return ranking_df
@@ -279,8 +281,8 @@ class RAGPipeline(object):
         prompt_messages.append(
             dict(role='system', content=get_system_prompt(rag=True,**kwargs)))
 
-        #user message with briefing chunks + question
-        ffq_prompt=get_ffq_prompt(question,briefing_df,chunk_col=self.chunk_col)
+        #user message with briefing texts + question
+        ffq_prompt=get_ffq_prompt(question, briefing_df)
         prompt_messages.append(dict(role='user', content=ffq_prompt))
 
         return prompt_messages
@@ -314,7 +316,7 @@ class RAGPipeline(object):
         if verbose:
             plot_ranking(ranking_df, self.selectors, question)
             from IPython.display import display
-            display(ranking_df.iloc[len(briefing_df):len(briefing_df)+3]) # also show some non-selected chunks
+            display(ranking_df.iloc[0:len(briefing_df)+3]) # also show some non-selected texts
         
         pred_completion = self.llm_pipe(prompt_messages,**kwargs)
 

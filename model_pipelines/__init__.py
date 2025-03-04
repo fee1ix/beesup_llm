@@ -564,21 +564,27 @@ class PhiPipeline(LanguageModelPipeline):
         )
 ################
 
-from labtools import LabHandler
+from labtools import Labhandler
+from labtools.data import Datahandle
 
 class LLMPipeline(object):
 
-    def __init__(self, ref=None, lab_handler=LabHandler(), **kwargs):
+    @classmethod
+    def from_model(cls, model=None):
 
-        if isinstance(ref, torch.nn.Module) or ('model' in kwargs):
+        name_or_path = getattr(model, 'name_or_path', None)
+        if name_or_path in ['meta-llama/Meta-Llama-3.1-8B-Instruct']:
+            return LlamaPipeline(model=model, name_or_path=name_or_path)
 
-            if isinstance(ref, torch.nn.Module): self.model=ref; ref=None
-            elif 'model' in kwargs: self.model=kwargs['model']; del kwargs['model']
-        
+        return cls(model=model, name_or_path=name_or_path)
+
+    def __init__(self, ref=None, labh=Labhandler(), **kwargs):
+
+        if 'model' in kwargs:
+            self.model=kwargs.pop('model')
             self.name_or_path=getattr(self.model, 'name_or_path', None)
-        
-        else:
-            self.name_or_path=kwargs.get('name_or_path', None)
+
+        self.name_or_path = getattr(self, 'name_or_path', None) or  kwargs.get('name_or_path', None)
 
         self.generation_config=kwargs.get('generation_config',dict())
         self.generation_config['return_dict_in_generate']=False
@@ -599,9 +605,9 @@ class LLMPipeline(object):
         self.pipeline_args['return_full_text']=False
         self.pipeline_args['clean_up_tokenization_spaces']=True
 
-        if lab_handler is not None:
-            self.lab=lab_handler
-            self.lab.attach(locals())
+        if labh is not None:
+            self.labh=labh
+            self.labh.attach(locals())
 
     def load_model(self):
         self.logger.info(f"Loading model {self.name_or_path}")
@@ -798,7 +804,7 @@ class LlamaPipeline(LLMPipeline):
     def __init__(self, ref=None, **kwargs):
         super().__init__(ref, **kwargs)
 
-        self.name_or_path='meta-llama/Meta-Llama-3.1-8B-Instruct'
+        self.name_or_path = getattr(self,'name_or_path',None) or 'meta-llama/Meta-Llama-3.1-8B-Instruct'
 
         self.generation_config['pad_token']='<|begin_of_text|>'
         self.generation_config['pad_token_id']=128000

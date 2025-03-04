@@ -58,18 +58,17 @@ def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs)
     return prompt.strip()
 
 
-def get_context(briefing_df=pd.DataFrame(), chunk_col='chunk', prefix="", suffix="", **kwargs):
+def get_context(briefing_df=pd.DataFrame(), text_col='text', prefix="", suffix="", **kwargs):
 
     #RAG BRIEFING if briefing_df is passed
     context=""
     if not briefing_df.empty:
 
-        chunk_col=kwargs.get('chunk_col', 'chunk')
-        assert chunk_col in briefing_df, f"{chunk_col} missing in briefing_df"
+        assert text_col in briefing_df, f"{text_col} missing in briefing_df"
 
         context+="### CONTEXT:\n\n"
         for _,row in briefing_df.iterrows():
-            context+=f"{row[chunk_col]}\n\n"
+            context+=f"{row[text_col]}\n\n"
     
     if context:
         context=f"{prefix}{context.strip()}{suffix}"

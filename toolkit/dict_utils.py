@@ -282,7 +282,6 @@ def del_dict_keypath(the_dict, keypath, inplace=False):
         return new_dict 
 
 
-
 def nestify_dict_like(the_dict, ref_dict):
     ref_keys = get_keys(ref_dict)
     the_keys = get_keys(the_dict)
@@ -341,7 +340,6 @@ def update_dict_smart(
         )
     
     return orign_dict
-
 
 
 def pick_from_dict(taker_dict, giver_dict):
