@@ -1,7 +1,10 @@
-from beesup_llm import *
-from beesup_llm.model_pipelines import *
-from beesup_llm.dataset import *
 
+from beesup_llm import get_labhandler
+from beesup_llm.llm import *
+#from beesup_llm.model_pipelines import *
+#from beesup_llm.dataset import *
+
+import pandas as pd
 from typing import Union
 from beesup_llm.injection import get_system_prompt, get_context, get_ffq_prompt
 
@@ -36,7 +39,7 @@ def plot_ranking(ranking_df: pd.DataFrame, selectors: list=[], question: str='')
     plt.show()
 
 
-# Selector Classes: Used to select which first n texts will be included to the briefing
+# SELECTOR CLASSES: Used to select which first n texts will be included to the briefing
 # input: ranking_df .. texts sorted decreasingly by score + selection criteria
 # output: list of booleans, True if text should be included, False otherwise
 
@@ -148,9 +151,6 @@ class FitKneeScore(RAGSelector):
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from labtools import Labhandler
-from labtools.data import Datahandle
-
 class RAGPipeline(object):
 
     @staticmethod
@@ -166,7 +166,7 @@ class RAGPipeline(object):
             data=None,
             llm_pipe=None,
             selectors: list = [],
-            labh=Labhandler(),
+            labh=get_labhandler(),
             **kwargs):
         
         self.emb_col = kwargs.get('emb_col', 'spo')

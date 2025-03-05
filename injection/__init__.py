@@ -58,17 +58,17 @@ def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs)
     return prompt.strip()
 
 
-def get_context(briefing_df=pd.DataFrame(), text_col='text', prefix="", suffix="", **kwargs):
+def get_context(briefing_df=pd.DataFrame(), chunk_txt_key:str='chunk', prefix="", suffix="", **kwargs):
 
     #RAG BRIEFING if briefing_df is passed
     context=""
     if not briefing_df.empty:
 
-        assert text_col in briefing_df, f"{text_col} missing in briefing_df"
+        assert chunk_txt_key in briefing_df.columns, f"{chunk_txt_key} missing in briefing_df"
 
         context+="### CONTEXT:\n\n"
         for _,row in briefing_df.iterrows():
-            context+=f"{row[text_col]}\n\n"
+            context+=f"{row[chunk_txt_key]}\n\n"
     
     if context:
         context=f"{prefix}{context.strip()}{suffix}"
@@ -98,7 +98,7 @@ def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
 
     return prompt
 
-def get_qdq_prompt(question, fewshots_df=pd.DataFrame(), briefing_df=pd.DataFrame(), **kwargs):
+def get_qdq_prompt(query_txt:str, fewshots_df=pd.DataFrame(), query_txt_key:str='query', briefing_df=pd.DataFrame(), **kwargs) -> str:
 
     prompt=""
     prompt+="You are given a question in German that asks for a set of wild bee species meeting specific characteristics. "
@@ -111,31 +111,31 @@ def get_qdq_prompt(question, fewshots_df=pd.DataFrame(), briefing_df=pd.DataFram
 
     if not fewshots_df.empty:
 
-        assert 'question' in fewshots_df, "question missing in fewshots_df"
+        assert query_txt_key in fewshots_df, f"{query_txt_key} missing in fewshots_df"
         assert 'gold_items' in fewshots_df, "gold_items missing in fewshots_df"
 
         prompt+="\n\n### EXAMPLES:\n\n"
 
         for _,fewshot in fewshots_df.iterrows():
-            prompt+=f"QUESTION: {fewshot.question} "
+            prompt+=f"QUESTION: {fewshot[query_txt_key]} "
             prompt+=f"ANSWER: {'; '.join(fewshot.gold_items)}\n\n"
 
     #RAG BRIEFING if briefing_df is passed
     prompt+=get_context(briefing_df,prefix="\n", suffix="\n\n", **kwargs)
 
     prompt+=f"\n### QUESTION: "
-    prompt+=f"{question}\n"
+    prompt+=f"{query_txt}\n"
     prompt+="### ANSWER: "
     return prompt
             
-def get_ffq_prompt(question, briefing_df=pd.DataFrame(), **kwargs):
+def get_ffq_prompt(query_txt:str, briefing_df=pd.DataFrame(), **kwargs):
      
     prompt=""
     if not briefing_df.empty:
         prompt+=get_context(briefing_df, suffix="\n\n", **kwargs)
         prompt+="### QUESTION:\n"
 
-    prompt+=f"{question}"
+    prompt+=f"{query_txt}"
     return prompt
      
 

@@ -1,5 +1,5 @@
-
 import os
+import sys
 import warnings
 from .toolkit import *
 from .toolkit.system import *
@@ -15,6 +15,21 @@ import logging
 from typing import Optional, Union
 
 import pandas as pd
+
+def get_labhandler():
+    """Returns an instance of Labhandler if it exists in sys.modules, else None."""
+    if 'labtools.labhandler' in sys.modules:
+        module = sys.modules['labtools.labhandler']
+        return getattr(module, 'Labhandler', None)() if hasattr(module, 'Labhandler') else None
+    return None
+
+# def get_labhandler():
+#     if 'Labhandler' in globals():
+#         return globals()['Labhandler']()
+#     else:
+#         return None
+
+
 
 class BaseDirectory(object):
     """

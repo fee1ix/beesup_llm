@@ -1,91 +1,93 @@
 import beesup_llm
-from beesup_llm import *
-from beesup_llm.model_pipelines import *
+from beesup_llm import get_labhandler
+#from beesup_llm import *
+from beesup_llm.llm import *
 
 from beesup_llm.injection import *
 from beesup_llm.injection.taxomizer import *
-from beesup_llm.injection.rag_pipeline import RAGPipeline
-from beesup_llm.injection.injection_experiment import InjectionExperiment
+from beesup_llm.injection.rag import RAGPipeline
+#from beesup_llm.injection.injection_experiment import InjectionExperiment
 
 
 from rapidfuzz import fuzz
 
 from transformers import TrainerCallback
 
-class EvaluatorCallback(TrainerCallback):
+# class EvaluatorCallback(TrainerCallback):
 
-    def __init__(
-            self,
-            evaluator,
-            experiment: InjectionExperiment,
-            rag_pipe: RAGPipeline = None
-            ):
+#     def __init__(
+#             self,
+#             evaluator,
+#             experiment: InjectionExperiment,
+#             rag_pipe: RAGPipeline = None
+#             ):
         
-        self.evaluator=evaluator
-        self.experiment=experiment
-        self.rag_pipe=rag_pipe
+#         self.evaluator=evaluator
+#         self.experiment=experiment
+#         self.rag_pipe=rag_pipe
 
-        self.name=f"{evaluator.subtype}:{evaluator.id}"
+#         self.name=f"{evaluator.subtype}:{evaluator.id}"
 
-        if self.rag_pipe:
-            self.name+=f"-rag:{rag_pipe.id}"
+#         if self.rag_pipe:
+#             self.name+=f"-rag:{rag_pipe.id}"
             
-    def save_callback_df(self, callback_df:pd.DataFrame, epoch=0, global_step=0, **kwargs):
+#     def save_callback_df(self, callback_df:pd.DataFrame, epoch=0, global_step=0, **kwargs):
 
-        epoch, global_step = int(epoch), int(global_step)
+#         epoch, global_step = int(epoch), int(global_step)
 
-        save_path=f"{self.experiment._path}/{epoch}:{global_step}_{self.name}_callback_df.pkl"
-        callback_df.to_pickle(save_path)
-        self.experiment.logger.info(f"Saved {self.name} to {save_path}")
+#         save_path=f"{self.experiment._path}/{epoch}:{global_step}_{self.name}_callback_df.pkl"
+#         callback_df.to_pickle(save_path)
+#         self.experiment.logger.info(f"Saved {self.name} to {save_path}")
     
-    def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+#     def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
 
-        if not self.evaluator.is_eval_epoch(state.epoch):
-            self.experiment.logger.info(f"{self.name}\tepoch: {state.epoch}\tglobal step: {state.global_step} not an eval epoch")
-            return #skip evaluation if not specified as eval epoch
+#         if not self.evaluator.is_eval_epoch(state.epoch):
+#             self.experiment.logger.info(f"{self.name}\tepoch: {state.epoch}\tglobal step: {state.global_step} not an eval epoch")
+#             return #skip evaluation if not specified as eval epoch
         
-        toc=None
-        if hasattr(self.experiment,'taxomizer'):
-            toc=self.experiment.taxomizer.get_table_of_contents()
+#         toc=None
+#         if hasattr(self.experiment,'taxomizer'):
+#             toc=self.experiment.taxomizer.get_table_of_contents()
 
-        self.experiment.logger.info(f"epoch: {state.epoch}\tglobal step: {state.global_step}")
+#         self.experiment.logger.info(f"epoch: {state.epoch}\tglobal step: {state.global_step}")
 
-        model=kwargs['model']
-        model.eval()
+#         model=kwargs['model']
+#         model.eval()
 
-        if self.rag_pipe:
-            self.rag_pipe.add_ranking_df(self.evaluator.df, **kwargs)
-            self.rag_pipe.add_briefing_df(self.evaluator.df, **kwargs)
+#         if self.rag_pipe:
+#             self.rag_pipe.add_ranking_df(self.evaluator.df, **kwargs)
+#             self.rag_pipe.add_briefing_df(self.evaluator.df, **kwargs)
             
 
-        callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
-        self.save_callback_df(callback_df, **state.__dict__)
-        self.evaluator.load_df() #reload evaluator df to remove ranking and briefing columns
+#         callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
+#         self.save_callback_df(callback_df, **state.__dict__)
+#         self.evaluator.load_df() #reload evaluator df to remove ranking and briefing columns
 
-class MCEEvaluatorCallback(EvaluatorCallback):
-    """Multiclass Cross Entropy Loss Evaluator Callback
+# class MCEEvaluatorCallback(EvaluatorCallback):
+#     """Multiclass Cross Entropy Loss Evaluator Callback
 
-    fetches sample-mapped loss data from Custom Trainer Wrapper
-    """
+#     fetches sample-mapped loss data from Custom Trainer Wrapper
+#     """
 
-    def __init__(self, experiment):
-        self.experiment=experiment
-        self.name=f"mce_callback"
-        self.loss_data=[]
+#     def __init__(self, experiment):
+#         self.experiment=experiment
+#         self.name=f"mce_callback"
+#         self.loss_data=[]
     
-    def add_loss_data(self, data):
-        self.loss_data.extend(data)
+#     def add_loss_data(self, data):
+#         self.loss_data.extend(data)
 
-    def on_epoch_end(self, args, state, control, **kwargs):
+#     def on_epoch_end(self, args, state, control, **kwargs):
 
-        callback_df=pd.DataFrame(self.loss_data)
+#         callback_df=pd.DataFrame(self.loss_data)
 
-        self.loss_data = []
-        self.save_df(callback_df, state)
-      
-class Evaluator(BaseDirectory):
+#         self.loss_data = []
+#         self.save_df(callback_df, state)
+
+
+
+class Evaluator(object):
     """Base class for all evaluators"""
-    type='llm_evaluator'
 
     @classmethod
     def from_ref(cls, ref=None, **kwargs):
@@ -104,38 +106,38 @@ class Evaluator(BaseDirectory):
         if getattr_or_key(ref, 'subtype') == cls.subtype: return True
         return False
 
-    def __init__(self, ref=None, llm_ref=None, df=pd.DataFrame(), **kwargs):
-        super().__init__(ref, **kwargs)
+    @staticmethod
+    def fit_llm_pipe(llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
+        return llm_pipe
 
-        self._default_config=dict(
-            subtype=None,
-            remarks=None,
-            n_rows=None,
-            columns=[],
-            eval_epochs=[],
-            llm_config=dict(
-            )
-        )
 
-        self._config_key_order.extend([k for k in self._default_config.keys() if k not in self._config_key_order])
-        self._config_keys_to_exclude.extend(['df'])
+    def __init__(
+            self,
+            ref=None,
+            label:str=None,
+            eval_df=None,
+            llm_pipe=None,
+            labh=get_labhandler(),
+            **kwargs):
+        
 
-        self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.update_config_smart(kwargs)
+        self.label = label
 
-        if llm_ref:
-            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            self.llm_pipe.update_config(self.llm_config)
-            self.llm_pipe.update_config_smart(kwargs)
+        if labh is not None:
+            self.labh=labh
+            eval_df, llm_pipe = self.labh.attach_parent(locals(), var_names=['eval_df', 'llm_pipe'])
 
-        self.load_df()
+        if isinstance(eval_df, pd.DataFrame):
+            self.eval_df = eval_df.iloc[:7].copy(); del eval_df
+        
+        if isinstance(llm_pipe, LLMPipeline):
+            llm_pipe = self.fit_llm_pipe(llm_pipe)
+            self.llm_pipe = llm_pipe
+    
+    @property
+    def df(self):
+        return self.eval_df.copy()
 
-        # attach df if provided/ overwrite loaded df
-        if not df.empty:
-            self.df=df
-
-        self.set_df()
-        self.df=self.df.iloc[:7].copy()
 
     def load_df(self):
         # load source data if available
@@ -150,6 +152,7 @@ class Evaluator(BaseDirectory):
         self.n_rows=len(self.df)
         self.columns=self.df.columns.tolist()
         return
+
 
     def is_eval_epoch(self, epoch):
         if self.eval_epochs==[]: return True
@@ -269,7 +272,6 @@ class MCQEvaluator(Evaluator):
 
         return eval_dict
     
-
 class QDQEvaluator(Evaluator):
     """Query Driven Questions Evaluator"""
     subtype='qdq'
