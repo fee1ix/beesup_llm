@@ -217,7 +217,14 @@ class RAGPipeline(object):
 
         if labh is not None:
             self.labh=labh
-            chunks_df, llm_pipe, emb_pipe, limiters = self.labh.attach_parent(locals(), var_names=['chunks_df', 'llm_pipe', 'emb_pipe', 'limiters'])
+
+            self.labh.attach_parent(locals())
+            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_local=True, remarks='Helloo')
+            llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
+            emb_pipe=self.labh.handle_object(locals(),'emb_pipe')
+            limiters=self.labh.handle_object(locals(),'limiters')
+
+            #chunks_df, llm_pipe, emb_pipe, limiters = self.labh.attach_parent(locals(), var_names=['chunks_df', 'llm_pipe', 'emb_pipe', 'limiters'])
         
         if isinstance(chunks_df, pd.DataFrame):
             chunks_df=chunks_df[[self.chunk_txt_key, self.chunk_emb_key]]
