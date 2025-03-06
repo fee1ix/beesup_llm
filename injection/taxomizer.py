@@ -3,7 +3,7 @@ from beesup_llm.toolkit.setup_utils import *
 from beesup_llm.injection.taxomizer_utils import *
 
 from beesup_llm.dataset import *
-from beesup_llm.model_pipelines import *
+from beesup_llm.llm import *
 
 import pickle
 import pandas as pd

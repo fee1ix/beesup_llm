@@ -219,7 +219,7 @@ class RAGPipeline(object):
             self.labh=labh
 
             self.labh.attach_parent(locals())
-            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_local=True, remarks='Helloo')
+            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_local=True, remarks='Hello from rag_pipe')
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             emb_pipe=self.labh.handle_object(locals(),'emb_pipe')
             limiters=self.labh.handle_object(locals(),'limiters')
