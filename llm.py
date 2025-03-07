@@ -4,7 +4,7 @@ import pandas as pd
 
 from typing import Union
 
-from beesup_llm import get_labhandler
+from beesup_llm import get_labhandler, _isinstance
 
 from threading import Thread
 from transformers import \
@@ -16,6 +16,8 @@ from transformers import \
     TextIteratorStreamer
 
 logging.getLogger("transformers").setLevel(logging.ERROR)
+
+
 
 
 class LLMPipeline(object):

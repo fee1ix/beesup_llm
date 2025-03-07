@@ -57,7 +57,6 @@ def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs)
        
     return prompt.strip()
 
-
 def get_context(briefing_df=pd.DataFrame(), chunk_txt_key:str='chunk', prefix="", suffix="", **kwargs):
 
     #RAG BRIEFING if briefing_df is passed
@@ -74,7 +73,6 @@ def get_context(briefing_df=pd.DataFrame(), chunk_txt_key:str='chunk', prefix=""
         context=f"{prefix}{context.strip()}{suffix}"
 
     return context
-
 
 def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
 

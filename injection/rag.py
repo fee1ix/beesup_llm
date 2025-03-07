@@ -1,7 +1,8 @@
-from beesup_llm import get_labhandler
-from beesup_llm.llm import *
-from beesup_llm.emb import *
+from beesup_llm import get_labhandler, _isinstance
+from beesup_llm.llm import LLMPipeline
+from beesup_llm.emb import EMBPipeline
 
+import logging
 from typing import Union
 
 import numpy as np
@@ -49,31 +50,14 @@ def get_ranking_plot(ranking_df: pd.DataFrame, limiters: list=[], query_txt: str
 # output: list of booleans, True if text should be included, False otherwise
 
 class RAGLimiter(object):
-    type='rag_selector'
-
-    @classmethod
-    def from_ref(cls, ref=dict(), **kwargs):
-
-        if isinstance(ref, cls): return ref
-        if isinstance(ref, dict):
-            if NumLimiter.matches(**ref): return NumLimiter(**ref,**kwargs)
-            if CharLimiter.matches(**ref): return CharLimiter(**ref,**kwargs)
-            if TokenLimiter.matches(**ref): return TokenLimiter(**ref,**kwargs)
-            if KneeLimiter.matches(**ref): return KneeLimiter(**ref,**kwargs)
-
-        return cls(**kwargs)
-
-    @classmethod
-    def matches(cls, name=None, **kwargs):
-        if name == cls.__name__: return True
-        return False
 
     @staticmethod
     def add_feature(chunks_df: pd.DataFrame, **kwargs):
         return
 
     def __init__(self):
-        self.name=self.__class__.__name__
+
+        pass
     
 class NumLimiter(RAGLimiter):
     """
@@ -183,8 +167,10 @@ class RAGPipeline(object):
             Additional keyword arguments for pipeline configuration: txt_key, emb_key, query_txt_key, query_emb_key, chunk_instruction, query_instruction
     """
 
-    @staticmethod
-    def fit_llm_pipe(llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
+    logger=logging.getLogger(__name__)
+
+    @classmethod
+    def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
         llm_pipe.generation_config['max_time'] = 1200
         llm_pipe.generation_config['max_new_tokens'] = 4096
         return llm_pipe
@@ -217,37 +203,36 @@ class RAGPipeline(object):
 
         if labh is not None:
             self.labh=labh
-
             self.labh.attach_parent(locals())
-            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_local=True, remarks='Hello from rag_pipe')
+            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_file=True, overwrite=False)
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             emb_pipe=self.labh.handle_object(locals(),'emb_pipe')
             limiters=self.labh.handle_object(locals(),'limiters')
 
-            #chunks_df, llm_pipe, emb_pipe, limiters = self.labh.attach_parent(locals(), var_names=['chunks_df', 'llm_pipe', 'emb_pipe', 'limiters'])
         
         if isinstance(chunks_df, pd.DataFrame):
             chunks_df=chunks_df[[self.chunk_txt_key, self.chunk_emb_key]]
             self.chunks_df = chunks_df.copy(); del chunks_df
         
-        if isinstance(emb_pipe, EMBPipeline):
+        if _isinstance(emb_pipe, EMBPipeline):
             emb_pipe = self.fit_emb_pipe(emb_pipe)
             self.emb_pipe = emb_pipe
 
-        if isinstance(llm_pipe, LLMPipeline):
+
+        if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe = self.fit_llm_pipe(llm_pipe)
             self.llm_pipe = llm_pipe
-    
-        if limiters:
-            self.limiters = [RAGLimiter.from_ref(s) for s in limiters]
+
+
+        if isinstance(limiters, list) and all([isinstance(l, RAGLimiter) for l in limiters]):
+            self.limiters=limiters
             self.add_limiter_features()
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         return self.chunks_df.copy()
             
-    def add_limiter_features(self):
-
+    def add_limiter_features(self) -> None:
         tokenizer=self.llm_pipe.get_tokenizer()
         for selector in self.limiters:
             selector.add_feature(self.chunks_df, txt_key=self.chunk_txt_key, tokenizer=tokenizer)

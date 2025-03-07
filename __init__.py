@@ -23,6 +23,18 @@ def get_labhandler():
         return getattr(module, 'Labhandler', None)() if hasattr(module, 'Labhandler') else None
     return None
 
+def _isinstance(the_object, the_class):
+
+    object_parts=the_object.__class__.mro()[:-1]
+    class_parts=the_class.mro()[:-1]
+
+    for object_part in object_parts:
+        for class_part in class_parts:
+            if str(object_part)==str(class_part):
+                return True
+            
+    return False
+
 # def get_labhandler():
 #     if 'Labhandler' in globals():
 #         return globals()['Labhandler']()
