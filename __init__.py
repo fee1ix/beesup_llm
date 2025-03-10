@@ -20,7 +20,7 @@ def get_labhandler():
     """Returns an instance of Labhandler if it exists in sys.modules, else None."""
     if 'labtools.labhandler' in sys.modules:
         module = sys.modules['labtools.labhandler']
-        return getattr(module, 'Labhandler', None)() if hasattr(module, 'Labhandler') else None
+        return getattr(module, 'Labhandler', None) if hasattr(module, 'Labhandler') else None
     return None
 
 def _isinstance(the_object, the_class):

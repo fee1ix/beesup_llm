@@ -1,10 +1,10 @@
-
 from beesup_llm import get_labhandler, _isinstance
-from beesup_llm.llm import LLMPipeline
+from beesup_llm.llm import LLMPipeline, prepare_sample_for_chat_completion, prepare_sample_for_chat_finetuning
 
 import logging
 import pandas as pd
 
+import math
 import torch
 from datasets import Dataset
 from trl import SFTTrainer, SFTConfig
@@ -12,7 +12,84 @@ from transformers import TrainerCallback, TrainingArguments, DataCollatorForSeq2
 from transformers.trainer import TrainerState
 from peft import PeftModel, LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-class LoRAExperiment(object):
+
+class CustomSFTTrainer(SFTTrainer):
+    """Custom SFTTrainer that stores per-sample losses during training."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Get the usual loss and outputs from the parent
+        loss, outputs = super().compute_loss(
+            model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
+        )
+
+        global_step=int(self.state.global_step)+1
+        epoch=int(self.state.epoch+global_step/self.state.max_steps)
+
+        if "labels" in inputs:
+            logits = outputs.logits
+            logits = logits[..., :-1, :].contiguous() # Shift so that tokens < n predict n
+            logits = logits.permute(0,2,1) # (batch_size, vocab_size, seq_len)
+
+            labels = inputs["labels"]  # (batch_size, seq_len)
+            labels = labels[..., 1:].contiguous() # Shift so that tokens < n predict n
+
+
+            loss_fct = torch.nn.CrossEntropyLoss()
+            tokens_per_sample=torch.tensor([(labs != -100).sum().item() for labs in labels])
+            batch_proportions=tokens_per_sample/tokens_per_sample.sum()
+            batch_proportions=batch_proportions.tolist()
+            loss_per_sample=torch.tensor([loss_fct(logs.unsqueeze(0), labs.unsqueeze(0)).item() for logs, labs in zip(logits, labels)])
+            loss_per_sample=loss_per_sample.detach().cpu().tolist()
+
+            if "sample_ids" in inputs:
+                sample_ids = inputs["sample_ids"].cpu().tolist()
+            else:
+                sample_ids = labels.size(0)*[0]  # fallback
+            
+            loss_data=[]
+            for l, s, p in zip(loss_per_sample, sample_ids, batch_proportions):
+                loss_data.append(
+                    dict(
+                        global_step=global_step,
+                        epoch=epoch,
+                        sample_id=s,
+                        loss=l,
+                        batch_proportion=p,
+                    )
+                )
+
+            # Now "push" these losses to any callback that implements `add_loss`
+            for callback in self.callback_handler.callbacks:
+                if hasattr(callback, "add_loss_data"):
+                    callback.add_loss_data(loss_data)
+
+        return (loss, outputs) if return_outputs else loss
+
+class CustomDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
+    """Custom DataCollatorForSeq2Seq that returns sample IDs in the batch."""
+    def __call__(self, features, return_tensors=None):
+        if return_tensors is None:
+            return_tensors = self.return_tensors
+
+        # Extract sample IDs before processing
+        sample_ids = [feature["sample_id"] for feature in features if "sample_id" in feature]
+
+        # Call the original DataCollatorForSeq2Seq method
+        batch = super().__call__(features, return_tensors=return_tensors)
+
+        # Add sample_ids back to the batch
+        if sample_ids:
+            batch["sample_ids"] = torch.tensor(sample_ids, dtype=torch.long)
+
+        return batch
+
+
+class FinetuningExperiment(object):
+    """
+    Performs supervised fine-tuning (SFT) of a LLM applying Low-Rank-Adaptation (LoRA).
+    """
     logger=logging.getLogger(__name__)
 
     @classmethod
@@ -26,17 +103,16 @@ class LoRAExperiment(object):
             ref=None,
             label:str=None,
             llm_pipe=None,
-            train_df=None,
+            data_df=None, # Dataframe with column 'split' for train/eval
             evaluators:list=[],
             labh=get_labhandler(),
             **kwargs):
         
         self.label=label
-        self.seed=kwargs.get('seed',42)
+        self.done=False
         
         self.do_eval_base_model=kwargs.get('do_eval_base_model',True)
         self.do_eval_lora_model=kwargs.get('do_eval_lora_model',True)
-        self.do_finetune=kwargs.get('do_finetune',True)
     
         #LORA CONFIG
         self.lora_config=kwargs.get('lora_config',dict(
@@ -67,20 +143,24 @@ class LoRAExperiment(object):
             do_eval=kwargs.get('do_eval',False),
             report_to=kwargs.get('report_to','none'),
             max_seq_length=kwargs.get('max_seq_length',4096),
-            packing=kwargs.get('packing',False)
+            packing=kwargs.get('packing',False),
+            seed=kwargs.get('seed',42)
         ))
 
 
         if labh is not None:
             self.labh=labh
             self.labh.attach_parent(locals())
-            train_df=self.labh.handle_object(locals(),'train_df')
+            data_df=self.labh.handle_object(locals(),'data_df')
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             evaluators=self.labh.handle_object(locals(),'evaluators')
+            
+            self.sft_config['output_dir']=self._path
 
+            #if self.is_saved:
 
-        if isinstance(train_df, pd.DataFrame):
-            self.train_df = train_df.copy(); del train_df
+        if isinstance(data_df, pd.DataFrame):
+            self.data_df = data_df.copy(); del data_df
         
         if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe = self.fit_llm_pipe(llm_pipe)
@@ -90,47 +170,92 @@ class LoRAExperiment(object):
             self.evaluators=evaluators
     
 
-    # def load_data(self, **kwargs):
+    def load_data(self, **kwargs) -> None:
 
-    #     assert hasattr(self, 'train_df'), "train_df is missing"
-    #     assert hasattr(self, 'llm_pipe'), "llm_pipe is missing"
+        assert hasattr(self, 'data_df'), "data_df is missing"
+        assert 'split' in self.data_df.columns, "split column is missing"
+        assert hasattr(self, 'llm_pipe'), "llm_pipe is missing"
 
+        train_df=self.data_df[self.data_df['split']=='train'].reset_index(drop=True).copy()
+        eval_df=self.data_df[self.data_df['split']=='eval'].reset_index(drop=True).copy()
 
+        self.train_ds, self.eval_ds = None, None
 
-
-
+        if not train_df.empty:
+            self.llm_pipe.load_tokenizer('training')
+            self.train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_tokenizer('training'),**kwargs), axis=1).to_list())
+        
+        if not eval_df.empty:
+            self.llm_pipe.load_tokenizer('inference')
+            self.eval_ds=Dataset.from_list(eval_df.apply(lambda x: prepare_sample_for_chat_completion(x, self.llm_pipe.get_tokenizer('inference'),**kwargs), axis=1).to_list())
+        
+        return
+    
     def get_lora_model(self, model: torch.nn.Module) -> PeftModel:
         self.logger.info(f"Loading Lora model")
 
+        lora_config=LoraConfig(**self.lora_config)
+
         model.gradient_checkpointing_enable()
         model = prepare_model_for_kbit_training(model)
-        model = get_peft_model(model, LoraConfig(**self.lora_config))
+        model = get_peft_model(model, lora_config)
+        model.config.use_cache = False
         model.print_trainable_parameters()
+
+        #SET LORA INFO
+        n_trainable_params,n_total_params=model.get_nb_trainable_parameters()
+        p_trainable_params=n_trainable_params/n_total_params
+
+        if lora_config.use_rslora:
+            lora_scale=lora_config.lora_alpha/math.sqrt(lora_config.r)
+        else:
+            lora_scale=lora_config.lora_alpha/lora_config.r
+
+        self.lora_info={
+            'n_trainable_params':n_trainable_params,
+            'n_total_params':n_total_params,
+            'p_trainable_params':p_trainable_params,
+            'lora_scale':lora_scale,
+        }
 
         return model
     
-
-    def load_trainer(self, lora_model: PeftModel) -> None:
+    def load_trainer(self, lora_model: PeftModel, **kwargs) -> None:
         self.logger.info(f"Loading trainer")
 
-        lora_model.config.use_cache = False
-
-        data_collator=DataCollatorForSeq2Seq(
+        data_collator=CustomDataCollatorForSeq2Seq(
             tokenizer=self.llm_pipe.get_tokenizer('training'),
             model=lora_model,
             padding='longest',
             label_pad_token_id =-100
             )
         
-        self.trainer=SFTTrainer(
+        
+        self.trainer=CustomSFTTrainer(
             model=lora_model,
             data_collator=data_collator,
             train_dataset=self.train_ds,
-            peft_config=self.lora_config,
-            args=self.sft_config,
+            eval_dataset=self.eval_ds,
+            peft_config=LoraConfig(**self.lora_config),
+            args=SFTConfig(**self.sft_config),
             )
         
-        return   
+        return
+    
+    def run(self, **kwargs) -> None:
+
+        model=self.llm_pipe.get_model()
+
+        self.load_data(**kwargs)
+
+        #if self.do_eval_base_model:
+
+        if self.sft_config['do_train']:
+            lora_model=self.get_lora_model(model)
+            self.load_trainer(lora_model)
+            self.trainer.train()
+        
+        return
 
 
     

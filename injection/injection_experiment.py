@@ -134,9 +134,8 @@ class InjectionExperiment(BaseDirectory):
             self.evaluators=[Evaluator.from_ref(eval_ref) for eval_ref in eval_refs]
             self.eval_configs=[pipe.get_config() for pipe in self.evaluators]
         
-        if rag_ref:
-            
-            self.rag_pipe
+        # if rag_ref:
+        #     self.rag_pipe
 
     def load_data(self, **kwargs):
         self.logger.info(f"Loading Data")

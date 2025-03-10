@@ -202,8 +202,7 @@ class RAGPipeline(object):
         
 
         if labh is not None:
-            self.labh=labh
-            self.labh.attach_parent(locals())
+            self.labh=labh(locals())
             chunks_df=self.labh.handle_object(locals(),'chunks_df', save_file=True, overwrite=False)
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             emb_pipe=self.labh.handle_object(locals(),'emb_pipe')

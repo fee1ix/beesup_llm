@@ -1,12 +1,15 @@
-import pandas as pd
-import numpy as np
-from ..toolkit.setup_utils import *
+import re
+import copy
+import logging
 
+import numpy as np
+import pandas as pd
+
+#from ..toolkit.setup_utils import *
 
 # ANYTREE UTILITY FUNCTIONS
 from anytree import Node, RenderTree, PreOrderIter, PostOrderIter
 
-from anytree import Node, NodeMixin
 
 class InOrderIter:
     """
@@ -553,7 +556,7 @@ def get_headerpath_until(the_node, tree):
 
 def get_chunk_text(chunk_row):
     #chunk_template="{subject}\t{predicate}\t{object}"
-    chunk_template="{predicate}: {object}"
+    chunk_template="{p}: {o}"
 
     chunk_text=chunk_template.format(**chunk_row)
     chunk_text=re.sub(r'\n+', '; ', chunk_text)

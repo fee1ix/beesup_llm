@@ -1,5 +1,6 @@
 import torch
 import logging
+import warnings
 import pandas as pd
 
 from typing import Union
@@ -18,6 +19,50 @@ from transformers import \
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 
+def prepare_sample_for_chat_completion(the_input: Union[pd.Series, dict, list], tokenizer: AutoTokenizer, **kwargs) -> dict:
+
+    if isinstance(the_input, pd.Series):
+        the_input=the_input.to_dict()
+
+    if isinstance(the_input, list): #assume that chat messages are given
+        prompt_messages=the_input
+    
+    elif isinstance(the_input, dict):
+        
+        if all(k in the_input for k in ['prompt_messages']):
+            prompt_messages=the_input['prompt_messages']
+
+    return tokenizer.apply_chat_template(prompt_messages,return_dict=True)
+
+def prepare_sample_for_chat_finetuning(the_input: Union[pd.Series, dict], tokenizer: AutoTokenizer, use_as_id:str=None, **kwargs) -> dict:
+
+    if isinstance(the_input, pd.Series):
+        the_input=the_input.to_dict()
+
+    if all(k in the_input for k in ['prompt_messages','gold_message']):
+                
+        prompt_messages=the_input.get('prompt_messages')
+        gold_message=the_input.get('gold_message')
+    
+    if gold_message[0]['role']!='assistant': warnings.warn('The gold message should be an assistant message')
+    if prompt_messages[-1]['role']!='user': warnings.warn('The last prompt message should be a user message')
+
+    all_messages=prompt_messages+gold_message
+
+    prompt_ids=tokenizer.apply_chat_template(prompt_messages,tokenize=True)
+    prompt_len=len(prompt_ids)
+
+    input_ids=tokenizer.apply_chat_template(all_messages,tokenize=True)
+    
+    #input_text=tokenizer.apply_chat_template(all_messages,tokenize=False)
+    inputs=tokenizer.apply_chat_template(all_messages,return_dict=True)
+
+    inputs['labels']=prompt_len*[-100]+input_ids[prompt_len:]
+
+    if (use_as_id is not None) and (use_as_id in the_input):
+        inputs['sample_id']=the_input.get(use_as_id)
+        
+    return inputs
 
 
 class LLMPipeline(object):
@@ -61,8 +106,7 @@ class LLMPipeline(object):
         self.pipeline_args['clean_up_tokenization_spaces']=True
 
         if labh is not None:
-            self.labh=labh
-            self.labh.attach_parent(locals())
+            self.labh=labh(locals())
 
     def load_model(self):
         self.logger.info(f"Loading model {self.name_or_path}")

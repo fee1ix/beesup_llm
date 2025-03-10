@@ -5,6 +5,10 @@ import logging
 import numpy as np
 import pandas as pd
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 from transformers import AutoModel, BitsAndBytesConfig
 
 class EMBPipeline(object):
@@ -26,11 +30,10 @@ class EMBPipeline(object):
             self.name_or_path=getattr(self.model, 'name_or_path', None)
         self.name_or_path = getattr(self, 'name_or_path', None) or  kwargs.get('name_or_path', None)
 
-        self.instruction = ""
+        self.instruction = kwargs.get('instruction', '')
 
         if labh is not None:
-            self.labh=labh
-            self.labh.attach_parent(locals())
+            self.labh=labh(locals())
 
     def load_model(self):
         self.logger.info(f"Loading model {self.name_or_path}")
@@ -82,20 +85,36 @@ class EMBPipeline(object):
 
         return emb_batch
 
-    def add_emb(self, pipe_df: pd.DataFrame, batch_size: int = 16, txt_key:str='text', emb_key:str='emb', verbose=False, **kwargs):
-        assert txt_key in pipe_df.columns, f"Column '{txt_key}' not found in DataFrame"
+    def get_embs(self, texts:list, batch_size: int = 16, instruction:str=None, verbose=False, **kwargs) -> np.ndarray:
 
         embs=[]
-        for i in range(0, len(pipe_df), batch_size):
-
-            text_batch = pipe_df[i:i+batch_size][txt_key].to_list()
+        for i in range(0, len(texts), batch_size):
+            text_batch = texts[i:i+batch_size]
             emb_batch = self.get_emb_batch(text_batch, **kwargs)
-
             embs.extend(emb_batch)
 
-            if verbose: print(f"{i+len(emb_batch)}/{len(pipe_df)}"+25*" ", end="\r")
+            if verbose: print(f"{i+len(emb_batch)}/{len(texts)}"+25*" ", end="\r")
+        
+        return embs
 
-        pipe_df[emb_key]=embs
+    def get_embs_unique(self, texts:list, **kwargs) -> np.ndarray:
+
+        if len(texts)!=len(set(texts)):
+            txts_unique=list(set(texts))
+            embs_unique=self.get_embs(txts_unique, **kwargs)
+        else:
+            return self.get_embs(texts, **kwargs)
+        
+        txt_emb_dict=dict(zip(txts_unique, embs_unique))
+        embs=[txt_emb_dict[txt] for txt in texts]
+        return embs
+
+
+    def add_emb(self, pipe_df: pd.DataFrame, txt_key:str='text', emb_key:str='emb', **kwargs):
+        assert txt_key in pipe_df.columns, f"Column '{txt_key}' not found in DataFrame"
+
+        pipe_df[emb_key]=self.get_embs_unique(pipe_df[txt_key].to_list(), **kwargs)
+
         return
 
     def call_on_dataframe(self, pipe_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
