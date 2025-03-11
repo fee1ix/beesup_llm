@@ -1,9 +1,11 @@
 from beesup_llm import get_labhandler, _isinstance
+from beesup_llm.llm_evaluation import LLMEvaluator
 from beesup_llm.llm import LLMPipeline, prepare_sample_for_chat_completion, prepare_sample_for_chat_finetuning
 
 import logging
 import pandas as pd
 
+import re
 import math
 import torch
 from datasets import Dataset
@@ -11,6 +13,75 @@ from trl import SFTTrainer, SFTConfig
 from transformers import TrainerCallback, TrainingArguments, DataCollatorForSeq2Seq
 from transformers.trainer import TrainerState
 from peft import PeftModel, LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+
+def camel_to_snake(name: str) -> str:
+    # Insert underscores before capital letters and convert to lowercase
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
+
+
+class PredictionCallback(TrainerCallback):
+
+    def __init__(self, experiment, **kwargs):
+
+        self.experiment=experiment
+        self.output_dir=getattr(self.experiment,'sft_config',{}).get('output_dir','.')
+        #self.output_name=camel_to_snake(self.__class__.__name__)
+    
+    @property
+    def snake_name(self):
+        return camel_to_snake(self.__class__.__name__)
+    
+    def get_df_name(self, state: TrainerState) -> str:
+        return f"{self.snake_name}_{state.global_step}_{self.output_name}_df.pkl"
+    
+    def do_log(self, state: TrainerState) -> None:
+        self.experiment.logger.info(f"epoch {state.epoch}/ global_step {state.global_step} --> {self.get_df_name(state)}")	
+
+    def save_df(self, df: pd.DataFrame, state: TrainerState) -> None:
+        df_name=self.get_df_name(state)
+        df_path=f"{self.output_dir}/{df_name}"
+        df.to_pickle(df_path)
+        self.experiment.logger.info(f"Saved results to {df_path}")
+
+class PredDataCallback(PredictionCallback):
+
+    def __init__(self, *args, eval_df: pd.DataFrame=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        #self.output_name=camel_to_snake(self.__class__.__name__)
+    
+    def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+
+        self.do_log(state)
+
+        model=kwargs['model']
+        model.eval()
+
+        #eval_batch_size=self.experiment.sft_config.per_device_eval_batch_size
+
+class EvaluatorCallback(PredictionCallback):
+
+    def __init__(self, *args, evaluator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.evaluator=evaluator
+    
+
+    
+
+
+
+class LogHistoryCallback(TrainerCallback):
+    def __init__(self, experiment):
+        self.experiment=experiment
+
+    def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+        log_history_df=pd.DataFrame(state.log_history)
+        log_history_df.to_pickle(f"{self.experiment._path}/log_history_df.pkl")
+
 
 
 class CustomSFTTrainer(SFTTrainer):
@@ -102,7 +173,7 @@ class FinetuningExperiment(object):
             self,
             ref=None,
             label:str=None,
-            llm_pipe=None,
+            llm_pipe: LLMPipeline=None,
             data_df=None, # Dataframe with column 'split' for train/eval
             evaluators:list=[],
             labh=get_labhandler(),
@@ -149,12 +220,10 @@ class FinetuningExperiment(object):
 
 
         if labh is not None:
-            self.labh=labh
-            self.labh.attach_parent(locals())
+            self.labh=labh(locals())
             data_df=self.labh.handle_object(locals(),'data_df')
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             evaluators=self.labh.handle_object(locals(),'evaluators')
-            
             self.sft_config['output_dir']=self._path
 
             #if self.is_saved:
@@ -169,7 +238,6 @@ class FinetuningExperiment(object):
         if evaluators:
             self.evaluators=evaluators
     
-
     def load_data(self, **kwargs) -> None:
 
         assert hasattr(self, 'data_df'), "data_df is missing"
@@ -242,6 +310,7 @@ class FinetuningExperiment(object):
         
         return
     
+
     def run(self, **kwargs) -> None:
 
         model=self.llm_pipe.get_model()

@@ -236,7 +236,7 @@ from kneed import KneeLocator
 import matplotlib.pyplot as plt
 
 # dist flattening --> vertical!!
-def get_dist_kneepoint(tree, include_leaves=True, plot=False):
+def get_dist_kneepoint(tree, include_leaves=True, plot=False, **kwargs):
 
     if include_leaves:
         sorted_dists=sorted([n.dist for n in PreOrderIter(tree)])
@@ -262,7 +262,7 @@ def get_dist_kneepoint(tree, include_leaves=True, plot=False):
 
     return float(knee_dist), knee_index
 
-def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
+def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwargs):
 
     if include_leaves:
         sorted_dists=np.array(sorted([n.dist for n in PreOrderIter(tree)]))
@@ -313,7 +313,7 @@ def do_dist_flattening(tree, threshold_dist=None):
 
 
 # ddist flattening --> horizontal!!
-def get_ddist_kneepoint(tree, include_leaves=True, plot=False):
+def get_ddist_kneepoint(tree, include_leaves=True, plot=False, **kwargs):
 
     if include_leaves:
         sorted_ddists=sorted([n.ddist for n in tree.descendants])
@@ -340,7 +340,7 @@ def get_ddist_kneepoint(tree, include_leaves=True, plot=False):
 
     return float(knee_ddist), knee_index
 
-def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False):
+def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwargs):
 
     if include_leaves:
         sorted_ddists=np.array(sorted([n.ddist for n in tree.descendants]))
@@ -406,7 +406,6 @@ def do_ddist_flattening(tree, threshold_ddist=None):
     logging.info(get_tree_info_dict(tree))
     return tree
 
-
 def recover_leaf_parents(tree):
 
     used_ids=[n.name for n in PreOrderIter(tree)]
@@ -443,7 +442,6 @@ def recover_leaf_parents(tree):
 
     logging.info(get_tree_info_dict(tree))
     return tree
-
 
 # ORDERING THE CHUNKS
 def ranking_order(df, start_idx=0, verbose=False):

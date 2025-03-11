@@ -1,12 +1,10 @@
-from beesup_llm import get_labhandler, _isinstance
-from beesup_llm.llm import LLMPipeline
 
+from beesup_llm import get_labhandler, _isinstance
+from beesup_llm.llm_evaluation import *
 from beesup_llm.injection import *
 #from beesup_llm.injection.taxomizer import *
 #from beesup_llm.injection.rag import RAGPipeline
 #from beesup_llm.injection.injection_experiment import InjectionExperiment
-
-import logging
 
 import re
 from typing import Union
@@ -85,65 +83,7 @@ from transformers import TrainerCallback
 #         self.save_df(callback_df, state)
 
 
-class Evaluator(object):
-    """Base class for all evaluators"""
-    logger = logging.getLogger(__name__)
-
-    @classmethod
-    def from_ref(cls, ref=None, **kwargs):
-        kwargs.update(get_cls_attrs(cls))
-        cls.logger.debug(f"{cls} ref={ref}, kwargs = {kwargs}\n")
-        pre_config = get_config_from_ref(ref, **kwargs)
-        
-        if MCQEvaluator.matches(pre_config): return MCQEvaluator(ref=pre_config, **kwargs)
-        if QDQEvaluator.matches(pre_config): return QDQEvaluator(ref=pre_config, **kwargs)
-        if FFQEvaluator.matches(pre_config): return FFQEvaluator(ref=pre_config, **kwargs)
-    
-        return cls(ref=pre_config, **kwargs)
-
-    @classmethod
-    def matches(cls, ref):
-        if getattr_or_key(ref, 'subtype') == cls.subtype: return True
-        return False
-
-    @classmethod
-    def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
-        return llm_pipe
-
-    def __init__(
-            self,
-            ref=None,
-            label:str=None,
-            eval_df=None,
-            llm_pipe=None,
-            labh=get_labhandler(),
-            **kwargs):
-        
-        self.label = label
-        self.eval_epochs=kwargs.get('eval_epochs',[])
-
-        if labh is not None:
-            self.labh=labh
-            self.labh.attach_parent(locals())
-            eval_df=self.labh.handle_object(locals(),'eval_df', save_file=True, overwrite=False)
-            llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
-
-        if isinstance(eval_df, pd.DataFrame):
-            self.eval_df = eval_df.copy(); del eval_df
-        
-        if _isinstance(llm_pipe, LLMPipeline):
-            llm_pipe = self.fit_llm_pipe(llm_pipe)
-            self.llm_pipe = llm_pipe
-    
-    @property
-    def df(self) -> pd.DataFrame:
-        return self.eval_df.copy()
-
-    def is_eval_epoch(self, epoch: int) -> bool:
-        if self.eval_epochs==[]: return True
-        elif int(epoch) in self.eval_epochs: return True
-        return False
-    
+class InjectionEvaluator(LLMEvaluator):
     def get_prompt_messages(self, sample: Union[pd.Series, dict], **kwargs) -> list:
 
         prompt_messages=[]
@@ -151,43 +91,8 @@ class Evaluator(object):
         prompt_messages.append(dict(role='user', content=self.get_prompt(**sample, **kwargs)))
         return prompt_messages
         
-    def get_pipe_df(self, df = pd.DataFrame(), **kwargs):
-        if df.empty: df=self.eval_df
-
-        pipe_df=df.copy()
-        pipe_df['prompt_messages']=pipe_df.apply(lambda x: self.get_prompt_messages(x, **kwargs), axis=1)
-        return pipe_df
-    
-    def add_pred_completion(self, pipe_df: pd.DataFrame, llm_pipe:LLMPipeline=None, **kwargs) -> None:
-
-        if _isinstance(llm_pipe, LLMPipeline):
-            llm_pipe = self.fit_llm_pipe(llm_pipe)
-            self.logger.info(f"using llm_pipe from arg")
-        else:
-            llm_pipe=self.llm_pipe
-            self.logger.info(f"using llm_pipe from self")
-
-        pipe_df=llm_pipe.add_pred_completion(pipe_df, **kwargs)
-
-    @staticmethod
-    def get_eval_dict(**kwargs) -> dict:
-        return dict(info="NotImplemented")
-    
-    def add_eval_dict(self, pipe_df: pd.DataFrame, **kwargs) -> None:
-        assert 'pred_completion' in pipe_df.columns, "pred_completion missing in pipe_df"
-        pipe_df['eval_dict']=pipe_df.apply(lambda x: self.get_eval_dict(**x, **kwargs), axis=1)
-
-    def __call__(self, llm_pipe:LLMPipeline=None, **kwargs) -> pd.DataFrame:
-    
-        pipe_df=self.get_pipe_df(**kwargs)
-        self.add_pred_completion(pipe_df, llm_pipe=llm_pipe, **kwargs)
-        self.add_eval_dict(pipe_df, **kwargs)
-                
-        return pipe_df
-
-class MCQEvaluator(Evaluator):
+class MCQEvaluator(InjectionEvaluator):
     """Multiple Choice Question Evaluator"""
-    subtype='mcq'
 
     @classmethod
     def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
@@ -234,11 +139,8 @@ class MCQEvaluator(Evaluator):
 
         return eval_dict
     
-
-
-class QDQEvaluator(Evaluator):
+class QDQEvaluator(InjectionEvaluator):
     """Query Driven Questions Evaluator"""
-    subtype='qdq'
 
     @classmethod
     def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
@@ -332,11 +234,8 @@ class QDQEvaluator(Evaluator):
 
         return dict(tp=tp, tp_fuzzy=tp_fuzzy, fp=fp, fn=fn)
 
-
-
-class FFQEvaluator(Evaluator):
+class FFQEvaluator(InjectionEvaluator):
     """Free Form Question Evaluator"""
-    subtype='ffq'
 
     @classmethod
     def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
