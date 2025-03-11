@@ -192,8 +192,8 @@ class RAGPipeline(object):
             **kwargs):
         
         self.label = label
-        self.chunk_txt_key = kwargs.get('txt_key', 'chunk')
-        self.chunk_emb_key = kwargs.get('emb_key', 'emb')
+        self.chunk_txt_key = kwargs.get('chunk_txt_key', 'chunk')
+        self.chunk_emb_key = kwargs.get('chunk_emb_key', 'emb')
         self.chunk_instruction=kwargs.get('chunk_instruction', '')
 
         self.query_txt_key = kwargs.get('query_txt_key', 'query')
@@ -203,7 +203,7 @@ class RAGPipeline(object):
 
         if labh is not None:
             self.labh=labh(locals())
-            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_file=True, overwrite=False)
+            chunks_df=self.labh.handle_object(locals(),'chunks_df')
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             emb_pipe=self.labh.handle_object(locals(),'emb_pipe')
             limiters=self.labh.handle_object(locals(),'limiters')
@@ -232,6 +232,13 @@ class RAGPipeline(object):
         return self.chunks_df.copy()
             
     def add_limiter_features(self) -> None:
+
+        if not hasattr(self,'llm_pipe'): return
+        if not hasattr(self,'limiters'): return
+
+        if not _isinstance(self.llm_pipe, EMBPipeline): return
+        if not all(_isinstance(l, RAGLimiter) for l in self.limiters): return
+
         tokenizer=self.llm_pipe.get_tokenizer()
         for selector in self.limiters:
             selector.add_feature(self.chunks_df, txt_key=self.chunk_txt_key, tokenizer=tokenizer)
@@ -392,6 +399,8 @@ class RAGPipeline(object):
             stream: bool, optional
                 If True, print the completion stream
         """
+
+        self.add_limiter_features()
 
         if isinstance(pipe_input, pd.DataFrame):
             return self.call_on_dataframe(pipe_input, **kwargs)

@@ -263,7 +263,7 @@ class Taxomizer(object):
         
         if not hasattr(self,'llm_tree'):
             self.load_llm_tree(self.emb_tree, self.chunks_df, verbose=verbose)
-
+            
             if hasattr(self, 'save_config'): self.save_config() # using labhandler to save config (tree_info)
 
     def get_table_of_contents(self):
