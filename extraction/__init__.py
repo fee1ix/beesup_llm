@@ -1,55 +1,33 @@
 OBSERVATION_ATTRIBUTES_DICT={
     'scientific_name':{
         'desc':'binary nomenclature consiting of genus and species, followed by taxonomic reference consisting of an authors name or abbreviation and a publication year.',
-        #'desc':'Latin designation of the bee often consisting of genus and species. Mostly followed by th',
-        'group':'bee',
-        'suffix':' was observed'
     },
     'date':{
         'sub_keys':['exact_date','date_range_orign', 'year_only']
     },
     'location':{
-        'group':'location',
         'sub_keys':['nstate','fstate', 'district', 'near_city', 'loc', 'loc_desc', 'tk','coords_orign']
     },
     'n_males':{
         'desc':'number of observed male bees, could be abbreviated with "♂"-symbol after the respective amount',
-        'group':'amounts',
-        'suffix':'male'
     },
     'n_females':{
         'desc':'number of female bees/ worker bees, could be abbreviated with "♀"-symbol after the respective amount',
-        'group':'amounts',
-        'suffix':'female'
     },
     'n_queens':{
         'desc':'the number of queens is explicitly described',
-        'group':'amounts',
-        'suffix':'queen'
-
     },
     'n_divers':{
         'desc':'number of bees with unassignable gender, could be abbreviated with "☿"-symbol after the respective amount',
-        'group':'amounts',
-        'suffix':'divers gender'
     },
     'leg':{
         'desc':'person who confirmed the bee, could be abbreviated with "leg." in front of the respective name',
-        'group':'persons',
-        'prefix':'confirmed by',
-        'suffix':'has confirmed'
     },
     'coll':{
         'desc':'person who collected the bee, could be abbreviated with "coll." in front of the respective name',
-        'group':'persons',
-        'prefix':'collected by',
-        'suffix':'has collected'
     },
     'det':{
         'desc':'person who has determined the bee, could be abbreviated with "det." or "vid." in front of the respective name',
-        'group':'persons',
-        'prefix':'determined by',
-        'suffix':'has determined'
     },
     'habitat':{
         'group':'location'
@@ -57,9 +35,6 @@ OBSERVATION_ATTRIBUTES_DICT={
     'visited_flowers':{
         'group':'location'
     },
-    # 'behaviour':{
-    #     'group':'bee'
-    # },
     'observed_nesting':{
         'group':'location'
     },
@@ -247,7 +222,6 @@ Extract information exactly as it appears in the passage."""
     extraction_prompt+="\nAll attributes in their defined order:\n"
     extraction_prompt+=", ".join(OBSERVATION_ATTRIBUTES_DICT.keys())
 
-
     extraction_prompt+="\n\nEXPECTED JSON FORMAT:\n"
     extraction_prompt+="""The JSON shall contain a list of observations as value for the key 'observations'. \
 Each observation should be a dictionary containing the sorted attributes specified above as keys and observation-specific values extracted from the report passage. \
@@ -263,7 +237,7 @@ EXTRACTION_PROMPT=build_extraction_prompt()
 
 
 #PYDANTIC SCHEME
-from pydantic import BaseModel#, ValidationError, Field
+from pydantic import BaseModel
 from typing import Optional, List
 
 class ExtractionScheme4SingleObservation(BaseModel):
@@ -279,10 +253,8 @@ class ExtractionScheme4SingleObservation(BaseModel):
     det: Optional[str] = None
     habitat: Optional[str] = None
     visited_flowers: Optional[str] = None
-    #behaviour: Optional[str] = None
     observed_nesting: Optional[str] = None
     collecting_method: Optional[str] = None
-    #remarks: Optional[str] = None
 
     class Config:
         extra = 'ignore'
@@ -303,13 +275,23 @@ class ExtractionScheme4MultipeObservations(BaseModel):
     
     meta_habitat: Optional[str] = None
     meta_visited_flowers: Optional[str] = None
-    #meta_behaviour: Optional[str] = None
     meta_observed_nesting: Optional[str] = None
     meta_collecting_method: Optional[str] = None
-    #meta_remarks: Optional[str] = None
     observations: List[ExtractionScheme4SingleObservation] = None
 
     class Config:
         extra = 'ignore'
 
-    
+
+import matplotlib.colors as mcolors
+ERROR_COLORS_DICT=dict(
+    tp_val=mcolors.to_hex('violet'),
+    fp_key=mcolors.to_hex('crimson'),
+    fp_val=mcolors.to_hex('magenta'),
+    fn_val=mcolors.to_hex('magenta'),
+    #tp_obs=mcolors.to_hex('white'),
+    fp_obs=mcolors.to_hex('magenta'),
+    fn_obs=mcolors.to_hex('magenta'),
+    #total_val=mcolors.to_hex('black'),
+    #partial_val=mcolors.to_hex('red'),
+)

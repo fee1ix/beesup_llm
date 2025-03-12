@@ -1,281 +1,128 @@
-import beesup_llm
-from beesup_llm import *
-from beesup_llm.toolkit.setup_utils import *
-from beesup_llm.toolkit.llm_utils import *
-from beesup_llm.toolkit.system import *
+import copy
+import pandas as pd
 
-#from beesup_llm.model import *
-from beesup_llm.dataset import BaseDataset
-from beesup_llm.training import *
+from typing import Union
+from beesup_llm import _isinstance
+from beesup_llm.finetuning_experiment import *
+from beesup_llm.llm_evaluation import LLMEvaluator	
+from beesup_llm.extraction.extraction_pipeline import ExtractionPipeline
 
-from beesup_llm.model_pipelines import *
-from beesup_llm.extraction.extraction_pipeline import *
+class ExtractionEvaluator(LLMEvaluator):
+    def __init__(self, *args, extraction_pipe: ExtractionPipeline=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
-from datasets import Dataset
-from transformers import TrainerCallback
+        if hasattr(self, 'labh'):
+            extraction_pipe = self.labh.handle_object(locals(), 'extraction_pipe')
 
-class PredictionCallback(TrainerCallback):
-
-    def __init__(self, experiment):
-        self.experiment = experiment
-        self.name='pred_callback'
-        pass
-
-    def get_pred_df(self, model, eval_df=None):
-        if eval_df is None: eval_df=self.experiment.eval_df
-        pred_df=self.experiment.extractor_pipe(eval_df, llm_ref=model)
-        return pred_df
-
-    def eval_loop(self, model, eval_batch_size):
-
-        eval_df=self.experiment.eval_df
-
-        pred_dfs=[]
-        for i in range(0, len(eval_df),eval_batch_size):
-            self.experiment.logger.info(f"Evaluate Sample {i+eval_batch_size}/{len(eval_df)}")
-            pred_df=self.get_pred_df(model, eval_df.iloc[i:i+eval_batch_size].copy())
-            pred_dfs.append(pred_df)
+        if _isinstance(extraction_pipe, ExtractionPipeline):
+            self.extraction_pipe=extraction_pipe
+            self.extraction_pipe.llm_pipe=getattr(self, 'llm_pipe', None) or getattr(self.extraction_pipe, 'llm_pipe', None)
             
-        pred_df=pd.concat(pred_dfs)
+            if not hasattr(self.extraction_pipe, 'llm_pipe'):
+                raise ValueError("neighter llm_pipe in args nor in extraction_pipe")
+        
+        self.extraction_pipe.add_prompt_messages(self.eval_df)
+    
+    def __call__(self, **kwargs) -> pd.DataFrame:
 
-        return pred_df
+        pipe_df=self.eval_df.copy()
+        self.add_pred_completion(pipe_df, **kwargs)
 
-    def save_df(self, df, global_step):
-        save_path=f"{self.experiment._path}/{str(global_step).zfill(4)}_{self.name}_df.pkl"
-        df.to_pickle(save_path)
-        self.experiment.logger.info(f"Saved {self.name} to {save_path}")
+        self.extraction_pipe.add_pred_dict(pipe_df, **kwargs)
+        self.extraction_pipe.add_eval_dict(pipe_df, **kwargs)
 
+        return pipe_df
+  
+class ExtractionCallback(EvaluatorCallback):
 
-    def on_epoch_end(self, args, state, control, **kwargs):
-        self.experiment.logger.info(f"global step: {state.global_step}")
+    def on_epoch_end(self, args=None, state=None, control=None, **kwargs) -> None:
+        super().on_epoch_end(args, state, control, **kwargs)
+
+        if not self.evaluator.is_eval_epoch(state.epoch):
+            self.experiment.logger.info(f"{self.state_str} Skip, because {state.epoch} not in {self.evaluator.eval_epochs=}")
+            return #skip evaluation if not specified as eval epoch
+
         model=kwargs['model']
         model.eval()
 
-        pred_df=self.eval_loop(model, args.per_device_eval_batch_size)
-        self.save_df(pred_df, state.global_step)
+        self.experiment.logger.info(f"{self.state_str} {self.object_str} {kwargs=}")
+        callback_df=self.evaluator(
+            llm_pipe=self.experiment.llm_pipe.__class__(model=model),
+            **kwargs)
 
-class ExtractionExperiment(BaseDirectory):
-    type='extraction_experiment'
+        self.save_df(callback_df, state)
+        return
+
+class ExtractionExperiment(FinetuningExperiment):
 
     @classmethod
-    def spawn_multirun_config(cls, the_input=None):
- 
-        if isinstance(the_input, pd.DataFrame):
-            multirun_df=the_input
+    def fit_llm_pipe(cls, llm_pipe: LLMPipeline, **kwargs) -> LLMPipeline:
+        llm_pipe=super().fit_llm_pipe(llm_pipe, **kwargs)
+        return llm_pipe
 
-        elif isinstance(the_input, list):
-            if all(isinstance(x, int) for x in the_input):
-                overview_df=cls.get_overview(keypaths=['path'])
-                multirun_df=overview_df[overview_df['id'].isin(the_input)]
+    def __init__(self, *args, extraction_pipe: ExtractionPipeline = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
-        elif the_input is None:
-            overview_df=cls.get_overview(keypaths=['path','done'])
-            multirun_df=overview_df[overview_df['done']==False].copy()
-            multirun_df.reset_index(drop=True, inplace=True)
+        assert self.evaluators == [], "evaluators should be empty" #evaluator is derrived from extraction_pipe in run()
 
-        multirun_config=dict(
-            framework_dirs=[os.path.dirname(path) for path in beesup_llm.__path__], #add as sys path in the run script
-            module_path=__file__,
-            script_path=f"{os.path.dirname(__file__)}/multirun_script.py",
-            experiment_dirs=multirun_df.path.values.tolist(),
-        )
+        if hasattr(self, 'labh'):
+            extraction_pipe=self.labh.handle_object(locals(),'extraction_pipe')
 
-        save_yaml(multirun_config, f"{cls.get_dir_path()}/multirun_config.yaml")
-        cls.logger.info(f"Saved multirun_config to {cls.get_dir_path()}/multirun_config.yaml")
+        if _isinstance(extraction_pipe, ExtractionPipeline):
+            self.extraction_pipe=extraction_pipe
+            self.extraction_pipe.llm_pipe=getattr(self, 'llm_pipe')
+               
+    def load_data(self, **kwargs) -> None:
 
-        print()
-        print("Run the following command to start the multirun:")
-        print(f"\tconda activate beesup; python {multirun_config['script_path']} {cls.get_dir_path()}/multirun_config.yaml")
-        print()
+        assert hasattr(self, 'data_df'), "data_df is missing"
+        assert 'split' in self.data_df.columns, "split column is missing"
+        assert hasattr(self, 'llm_pipe'), "llm_pipe is missing"
 
-        return multirun_df
-    
-    def __init__(self, ref=None, dataset_ref=None, extractor_ref=None, llm_ref=None, trainer_ref=None, **kwargs): 
-        super().__init__(ref, **kwargs)
-
-        self._default_config=dict(
-            done = False,
-            seed = 55,
-            do_eval_base_model=True,
-            do_train=True,
-
-            llm_config=dict(
-                generation_config=dict(
-                    max_new_tokens=4096,
-                    max_time=1200,
-                ),
-            ),
-
-            trainer_config=dict(
-                trainer_args=dict(
-                    num_train_epochs=10,
-                    #per_device_train_batch_size=4,
-                    output_dir=f"{self._path}",
-                    save_strategy='no',
-                    eval_strategy='no',
-                    do_eval=False,
-                    fp16=False,
-                ),
-            ),
-        )
-
-        self._config_key_order.extend(list(self._default_config.keys()))
-        self._config_keys_to_exclude.extend(['dataset_df','train_df','test_df','eval_df','train_ds','eval_ds','trainer','trainwrap','llm_pipe','extractor_pipe','dataset'])
-
-        self.update_config(self._default_config, overwrite_if_conflict=False)
-        self.update_config_smart(kwargs)
-
-        if self.is_spawned():
-            llm_ref=self.llm_config
-            dataset_ref=self.dataset_config
-            trainer_ref=self.trainer_config
-            extractor_ref=self.extractor_config
-
-
-        if llm_ref:
-            self.llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-            self.llm_pipe.update_config(self._default_config['llm_config'])
-            self.llm_pipe.update_config_smart(kwargs)
-            self.llm_config=self.llm_pipe.get_config()
+        assert 'report_passage' in self.data_df.columns, "missing 'report_passage' column"
+        assert 'gold_completion' in self.data_df.columns, "missing 'gold_completion' column"
         
-        if dataset_ref:
-            self.dataset=BaseDataset.from_ref(dataset_ref)
-            self.dataset_config=self.dataset.get_config()
+        #prepare training data
+        train_df=self.data_df[self.data_df['split']=='train'].reset_index(drop=True).copy()
+        self.extraction_pipe.add_prompt_messages(train_df, **kwargs)
+        train_df['gold_message']=train_df['gold_completion'].apply(lambda x: [{'role':'assistant','content': x}])
+
+        eval_df=self.data_df[self.data_df['split']=='eval'].reset_index(drop=True).copy()
+        self.eval_df=eval_df.copy()
+
+        self.train_ds, self.eval_ds = None, None
+        if not train_df.empty:
+            self.llm_pipe.load_tokenizer('training')
+            self.train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_tokenizer('training'),**kwargs), axis=1).to_list())
         
-        if trainer_ref:
-            self.trainwrap=BaseTrainerWrap.from_ref(trainer_ref)
-            self.trainwrap.update_config(self._default_config['trainer_config'])
-            self.trainwrap.update_config_smart(kwargs)
-            self.trainwrap.trainer_args['seed']=self.seed
-            self.trainer_config=self.trainwrap.get_config()
-        
-        if extractor_ref:
-            self.extractor_pipe=ExtractionPipeline.from_ref(extractor_ref, llm_ref=self.llm_pipe)
-            self.extractor_pipe.update_config_smart(kwargs)
-            self.extractor_config=self.extractor_pipe.get_config()
-        
-    def load_data(self, **kwargs):
-        self.logger.info(f"Loading Data")
+        return
 
-        assert hasattr(self, 'dataset'), "Dataset must be assigned before loading data"
-        assert hasattr(self, 'llm_pipe'), "llm_pipe must be assigned before loading data"
-        assert hasattr(self, 'extractor_pipe'), "Extraction extractor_pipe must be assigned before loading data"
-        
-        train_df=self.dataset.get_df_splits('train')
-        eval_df=self.dataset.get_df_splits(['test','eval'])
+    def run(self, **kwargs) -> None:
+        self.run_entry(**kwargs)
 
-        self.llm_pipe.load_training_tokenizer()
-        self.llm_pipe.load_inference_tokenizer()
-
-        train_df=self.extractor_pipe.prepare_df_for_finetuning(train_df)
-        train_ds=self.extractor_pipe.get_ds_for_finetuning(train_df, self.llm_pipe.get_training_tokenizer()) # tokenizer type doesnt matter at this point, because padding is not applied
-
-        eval_df=self.extractor_pipe.prepare_df_for_completion(eval_df)
-        eval_ds=self.extractor_pipe.get_ds_for_completion(eval_df,  self.llm_pipe.get_inference_tokenizer())
-
-        self.train_df=train_df
-        self.eval_df=eval_df
-
-        self.train_ds=train_ds
-        self.eval_ds=eval_ds
-
-    def get_trainer(self, model=None, **kwargs):
-        assert model is not None, "model must be passed"
-
-        self.logger.info(f"Loading Trainer")
-
-        trainer= self.trainwrap.get_trainer(
-            model=model,
-            tokenizer=self.llm_pipe.get_training_tokenizer(),
-            train_dataset=self.train_ds,
-            #args=trainer_args,
-        )
-
-        trainer.add_callback(PredictionCallback(self))
-        return trainer
-    
-    def evaluate_base_model(self,model):
-
-        pred_callback=PredictionCallback(self)
-        pred_df=pred_callback.eval_loop(model,self.trainer_config['trainer_args']['per_device_eval_batch_size'])
-        pred_callback.save_df(pred_df,0)
-
-    def run(self,**kwargs):
-
-        self.logger.info(f"RUNNING")
-        set_seeds(self.seed)
-
-        if not self.is_spawned():
-            self.spawn()
-
-        if self.done:
-            self.logger.info(f"Already done. Skipping.")
-            return
-
-        self.timestamp_run=get_timestamp()
-        base_model=self.llm_pipe.get_model()
-
-        self.load_data(**kwargs)
+        self.evaluators=[
+            ExtractionEvaluator(
+                extraction_pipe=self.extraction_pipe,
+                eval_df=self.eval_df,
+                llm_pipe=self.llm_pipe,
+                **kwargs)]
 
         if self.do_eval_base_model:
-            self.evaluate_base_model(model=base_model)
+            self.evaluate_base_model(**kwargs)
+        
+        if (self.do_eval_lora_model or self.do_train):
+            self.load_trainer(**kwargs)
+
+        if self.do_eval_lora_model:
+            for evaluator in self.evaluators:
+                evaluator_callback=EvaluatorCallback(self, evaluator, **kwargs)
+                self.trainer.add_callback(evaluator_callback)
         
         if self.do_train:
-            trainer=self.get_trainer(model=base_model,**kwargs)
-
-            self.lora_info = getattr(self.trainwrap, 'lora_info', None)
-
-            trainer_args=trainer.args.to_dict()
-            save_yaml(trainer_args, f"{self._path}/trainer_args.yaml")
-            trainer.train()
-
-        self.done=True
-        self.timestamp_done=get_timestamp()
-        set_config(self.get_config(),path=self._path)
+            for trainer_callback in [MCECallback(self), HistoryCallback(self)]:
+                self.trainer.add_callback(trainer_callback)
+            self.train(**kwargs)
+        
+        self.run_exit(**kwargs)
         return
     
-    def spawn(self):
-        if not all([hasattr(self, attr) for attr in ['llm_pipe','dataset','trainwrap','extractor_pipe']]):
-            raise ValueError("llm_pipe, dataset, trainwrap, extractor_pipe must be assigned before spawning.")
-
-        if not self.llm_pipe.is_spawned(): self.llm_pipe.spawn()
-        if not self.dataset.is_spawned(): self.dataset.spawn()
-        if not self.trainwrap.is_spawned(): self.trainwrap.spawn()
-        if not self.extractor_pipe.is_spawned(): self.extractor_pipe.spawn()
-        super().spawn()
-
-    def get_callbacks_df(self):
-
-        fns=os.listdir(self._path)
-        fns=[fn for fn in fns if fn.endswith('df.pkl')]
-        callbacks_df=pd.DataFrame()
-        for fn in fns:
-            global_step=int(fn[:4])
-            callback_df=pd.read_pickle(f"{self._path}/{fn}")
-            callback_df['global_step']=global_step
-            callbacks_df=pd.concat([callbacks_df,callback_df])
-
-        callbacks_df.reset_index(drop=True, inplace=True)
-        return callbacks_df
-
-if __name__ == '__main__':
-    import sys
-    import logging
-
-    if len(sys.argv) != 2:
-        print("Usage: python experiment_module.py <config_path>")
-        sys.exit(1)
-
-    experiment_dir=sys.argv[1]
-    os.chdir(experiment_dir)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        #level=logging.DEBUG,
-        format='%(asctime)s - %(filename)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s')
-
-    # Initialize and run the experiment
-    experiment = ExtractionExperiment(experiment_dir)
-    experiment.run()
-
     

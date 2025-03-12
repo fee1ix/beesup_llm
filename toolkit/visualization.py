@@ -137,7 +137,6 @@ GO_LAYOUT=go.Layout(
     )
 
 
-
 def plot_emb_clustering_scatter_3d(clustering_df, n_samples=None, random_state=22):
     
     if n_samples is None: n_samples=len(clustering_df)

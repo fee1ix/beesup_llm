@@ -11,77 +11,6 @@ from typing import Union
 from rapidfuzz import fuzz
 from transformers import TrainerCallback
 
-# class EvaluatorCallback(TrainerCallback):
-
-#     def __init__(
-#             self,
-#             evaluator,
-#             experiment: InjectionExperiment,
-#             rag_pipe: RAGPipeline = None
-#             ):
-        
-#         self.evaluator=evaluator
-#         self.experiment=experiment
-#         self.rag_pipe=rag_pipe
-
-#         self.name=f"{evaluator.subtype}:{evaluator.id}"
-
-#         if self.rag_pipe:
-#             self.name+=f"-rag:{rag_pipe.id}"
-            
-#     def save_callback_df(self, callback_df:pd.DataFrame, epoch=0, global_step=0, **kwargs):
-
-#         epoch, global_step = int(epoch), int(global_step)
-
-#         save_path=f"{self.experiment._path}/{epoch}:{global_step}_{self.name}_callback_df.pkl"
-#         callback_df.to_pickle(save_path)
-#         self.experiment.logger.info(f"Saved {self.name} to {save_path}")
-    
-#     def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
-
-#         if not self.evaluator.is_eval_epoch(state.epoch):
-#             self.experiment.logger.info(f"{self.name}\tepoch: {state.epoch}\tglobal step: {state.global_step} not an eval epoch")
-#             return #skip evaluation if not specified as eval epoch
-        
-#         toc=None
-#         if hasattr(self.experiment,'taxomizer'):
-#             toc=self.experiment.taxomizer.get_table_of_contents()
-
-#         self.experiment.logger.info(f"epoch: {state.epoch}\tglobal step: {state.global_step}")
-
-#         model=kwargs['model']
-#         model.eval()
-
-#         if self.rag_pipe:
-#             self.rag_pipe.add_ranking_df(self.evaluator.df, **kwargs)
-#             self.rag_pipe.add_briefing_df(self.evaluator.df, **kwargs)
-            
-
-#         callback_df=self.evaluator(llm_ref=model, toc=toc, **kwargs)
-#         self.save_callback_df(callback_df, **state.__dict__)
-#         self.evaluator.load_df() #reload evaluator df to remove ranking and briefing columns
-
-# class MCEEvaluatorCallback(EvaluatorCallback):
-#     """Multiclass Cross Entropy Loss Evaluator Callback
-
-#     fetches sample-mapped loss data from Custom Trainer Wrapper
-#     """
-
-#     def __init__(self, experiment):
-#         self.experiment=experiment
-#         self.name=f"mce_callback"
-#         self.loss_data=[]
-    
-#     def add_loss_data(self, data):
-#         self.loss_data.extend(data)
-
-#     def on_epoch_end(self, args, state, control, **kwargs):
-
-#         callback_df=pd.DataFrame(self.loss_data)
-
-#         self.loss_data = []
-#         self.save_df(callback_df, state)
-
 
 class InjectionEvaluator(LLMEvaluator):
     def get_prompt_messages(self, sample: Union[pd.Series, dict], **kwargs) -> list:
@@ -118,7 +47,7 @@ class MCQEvaluator(InjectionEvaluator):
         return pipe_df
 
     @staticmethod 
-    def get_prompt(sample:dict=dict(), **kwargs) -> str:
+    def get_prompt(sample:Union[pd.Series, dict]=dict(), **kwargs) -> str:
         return get_mcq_prompt(**sample, **kwargs)
 
     @staticmethod
@@ -245,6 +174,9 @@ class FFQEvaluator(InjectionEvaluator):
         return llm_pipe
 
     @staticmethod 
-    def get_prompt(sample:Union[pd.Series, dict]=dict(),**kwargs) -> str:
+    def get_prompt(sample:Union[pd.Series, dict]=dict(), **kwargs) -> str:
+
+
+
         return get_ffq_prompt(**sample, **kwargs)
     

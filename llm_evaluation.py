@@ -3,6 +3,7 @@ from beesup_llm.llm import LLMPipeline
 
 import logging
 import pandas as pd
+from typing import Union 
 
 
 class LLMEvaluator(object):
@@ -70,6 +71,8 @@ class LLMEvaluator(object):
     def add_eval_dict(self, pipe_df: pd.DataFrame, **kwargs) -> None:
         assert 'pred_completion' in pipe_df.columns, "pred_completion missing in pipe_df"
         pipe_df['eval_dict']=pipe_df.apply(lambda x: self.get_eval_dict(**x, **kwargs), axis=1)
+
+
 
     def __call__(self, llm_pipe:LLMPipeline=None, pipe_df:pd.DataFrame=None, **kwargs) -> pd.DataFrame:
 

@@ -74,7 +74,10 @@ def get_context(briefing_df=pd.DataFrame(), chunk_txt_key:str='chunk', prefix=""
 
     return context
 
-def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
+def get_mcq_prompt(query_txt:str=None, choices:list=[], briefing_df=pd.DataFrame(), query_txt_key:str='question', **kwargs):
+
+    if query_txt is None:
+        query_txt=kwargs.get(query_txt_key, None)
 
     prompt=""
     prompt+="You are provided with the following multiple-choice question. "
@@ -87,7 +90,7 @@ def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
     prompt+=get_context(briefing_df, prefix="\n\n", suffix="", **kwargs)
 
     prompt+=f"\n\n### QUESTION:\n\n"
-    prompt+=f"{question}\n\n"
+    prompt+=f"{query_txt}\n\n"
 
     for i, choice in enumerate(choices):
         prompt+=f"{chr(65+i)}) {choice}\n"
@@ -96,7 +99,10 @@ def get_mcq_prompt(question, choices, briefing_df=pd.DataFrame(), **kwargs):
 
     return prompt
 
-def get_qdq_prompt(query_txt:str, fewshots_df=pd.DataFrame(), query_txt_key:str='query', briefing_df=pd.DataFrame(), **kwargs) -> str:
+def get_qdq_prompt(query_txt:str=None, fewshots_df=pd.DataFrame(), query_txt_key:str='question', briefing_df=pd.DataFrame(), **kwargs) -> str:
+
+    if query_txt is None:
+        query_txt=kwargs.get(query_txt_key, None)
 
     prompt=""
     prompt+="You are given a question in German that asks for a set of wild bee species meeting specific characteristics. "
@@ -126,7 +132,10 @@ def get_qdq_prompt(query_txt:str, fewshots_df=pd.DataFrame(), query_txt_key:str=
     prompt+="### ANSWER: "
     return prompt
             
-def get_ffq_prompt(query_txt:str, briefing_df=pd.DataFrame(), **kwargs):
+def get_ffq_prompt(query_txt:str=None, briefing_df=pd.DataFrame(), query_txt_key:str='question', **kwargs):
+
+    if query_txt is None:
+        query_txt=kwargs.get(query_txt_key, None)
      
     prompt=""
     if not briefing_df.empty:

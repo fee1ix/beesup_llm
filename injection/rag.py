@@ -45,7 +45,7 @@ def get_ranking_plot(ranking_df: pd.DataFrame, limiters: list=[], query_txt: str
     return plt
 
 
-# SELECTOR CLASSES: Used to select which first n texts will be included to the briefing
+# SELECTOR CLASSES: Used to select which first n textchunks, will be included to the briefing
 # input: ranking_df .. texts sorted decreasingly by score + selection criteria
 # output: list of booleans, True if text should be included, False otherwise
 
@@ -217,11 +217,9 @@ class RAGPipeline(object):
             emb_pipe = self.fit_emb_pipe(emb_pipe)
             self.emb_pipe = emb_pipe
 
-
         if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe = self.fit_llm_pipe(llm_pipe)
             self.llm_pipe = llm_pipe
-
 
         if isinstance(limiters, list) and all([isinstance(l, RAGLimiter) for l in limiters]):
             self.limiters=limiters
@@ -236,7 +234,7 @@ class RAGPipeline(object):
         if not hasattr(self,'llm_pipe'): return
         if not hasattr(self,'limiters'): return
 
-        if not _isinstance(self.llm_pipe, EMBPipeline): return
+        if not _isinstance(self.llm_pipe, LLMPipeline): return
         if not all(_isinstance(l, RAGLimiter) for l in self.limiters): return
 
         tokenizer=self.llm_pipe.get_tokenizer()
@@ -312,6 +310,9 @@ class RAGPipeline(object):
     def add_briefing_df(self, pipe_df: pd.DataFrame) -> None:
         assert 'ranking_df' in pipe_df, "ranking_df missing in pipe_df"
         pipe_df['briefing_df']=pipe_df.apply(lambda x: self.get_briefing_df(**x), axis=1)
+
+        self.logger.debug(f"{pipe_df.iloc[0].briefing_df.columns=}")
+        self._briefing_df=pipe_df.iloc[0].briefing_df
 
     def get_prompt_messages(self, query_txt: str, briefing_df: pd.DataFrame, **kwargs) -> list:
 
@@ -399,9 +400,7 @@ class RAGPipeline(object):
             stream: bool, optional
                 If True, print the completion stream
         """
-
         self.add_limiter_features()
-
         if isinstance(pipe_input, pd.DataFrame):
             return self.call_on_dataframe(pipe_input, **kwargs)
 

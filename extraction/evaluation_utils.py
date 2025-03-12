@@ -1,4 +1,3 @@
-import copy
 import torch
 import difflib
 
@@ -6,58 +5,31 @@ import regex as re
 import numpy as np
 import pandas as pd
 
-
 from rapidfuzz import fuzz
-from functools import reduce
+#from functools import reduce
+# import matplotlib.pyplot as plt
+# import matplotlib.lines as mlines
+# import matplotlib.colors as mcolors
 
-from beesup_llm.toolkit.retrieval_metrics import *
-
-import matplotlib.pyplot as plt
-import matplotlib.lines as mlines
-import matplotlib.colors as mcolors
-
-from beesup_llm.extraction import \
-    ExtractionScheme4SingleObservation, \
-    ExtractionScheme4MultipeObservations, \
-    OBSERVATION_ATTRIBUTES_DICT, \
-    OBSERVATION_DESCRIPTIONS_DICT
+from beesup_llm.extraction import ERROR_COLORS_DICT
 
 
 # MATCHING OBSERVATIONS PRED vs. GOLD
 def fuzzy_match(val_gold,val_pred):
-
-    #only consinder cols where both attributes are defined for matching!!
+    #only consinder cols where both attributes are defined for matching
 
     #TP: fuzzy score if both values are defined
     if (pd.notna(val_gold)) and (pd.notna(val_pred)):
         val_gold=str(val_gold).strip()
         val_pred=str(val_pred).strip()
-        #score=0.1+0.009*fuzz.ratio(val_gold,val_pred) #always > 0.1
         score=fuzz.ratio(val_gold,val_pred)/100
 
-    # elif (pd.isna(val_gold)) and (pd.isna(val_pred)):
-    #     #score=1.0
-    #     score=torch.nan
-    
-    # #FP:
-    # elif (pd.isna(val_gold)) and (pd.notna(val_pred)):
-    #     score=0.0
-
-    # #FN:
-    # elif (pd.notna(val_gold)) and (pd.isna(val_pred)):
-
     else:
-        #score=0.0
         score=torch.nan
     
-
     return score
 
 def cross_match(gold_df,pred_df):
-
-    # gold_keys=set(gold_df.dropna(axis=1, how='all').columns)
-    # pred_keys=set(pred_df.dropna(axis=1, how='all').columns)
-    # intersection_keys=list(gold_keys and pred_keys)
 
     match_data=[]
     for g,gold_row in gold_df.iterrows():
@@ -80,9 +52,6 @@ def cross_match(gold_df,pred_df):
     else: #create emtpy match dataframe
         match_df=pd.DataFrame(columns=['g','p','scientific_name_gold','scientific_name_pred']+[f'{c}_score' for c in gold_df.columns])
 
-    #only mean over gold columns!
-    #match_df['mean_score']=match_df[[f'{k}_score' for k in intersection_keys if k in gold_df.columns]].mean(axis=1)
-    #match_df['mean_score']=match_df[[f'{k}_score' for k in gold_df.columns]].mean(axis=1)
     match_df['mean_score']=match_df[[k for k in match_df.columns if k.endswith('_score')]].mean(axis=1)
 
     return match_df
@@ -99,13 +68,12 @@ def get_match(gold_df,pred_df):
         obs_df=cross_match(gold_df,pred_df)
         has_meta_row=False
 
-    #scientific_name of bee must match!
+    #scientific_name of bee must match with score > 0.9!
     if "scientific_name_score" in obs_df:
         obs_df=obs_df[(obs_df.scientific_name_score>0.9)|(obs_df.scientific_name_score==torch.nan)|(obs_df.scientific_name_score.isna())]
 
     obs_df.sort_values(by='mean_score',ascending=False,inplace=True)
     obs_df.reset_index(drop=True,inplace=True)
-    #return obs_df
 
     #keep only unique 1:1 mappings
     i=0
@@ -140,7 +108,8 @@ def get_match(gold_df,pred_df):
     match_df.attrs['pred_is_empty']=pred_df.attrs['is_empty']
     return match_df[column_order]
 
-# SPAN LOCALISATION
+
+# ERROR SPAN LOCALISATION
 def get_observations_span(json_string,verbose=False):
     l0,l1=re.search(r'"observations"\s*:\s*(.*)^(?:(.*?)\s*\}\s*```)',json_string,flags=re.S|re.M).span(1)
     if verbose:
@@ -158,9 +127,6 @@ def get_observation_span(idx,json_string,observations_span=None,verbose=False):
     if idx==0:
         o1,o0,i=l0,0,None
     else:
-        #for i,observation in enumerate(re.finditer(r'( *{\s*[^{}]*?\s*\})',json_string[l0:l1])):
-        #for i,observation in enumerate(re.finditer(r'{((?:[^{}]|(?R))*)}',json_string[l0:l1])):
-
         for i,observation in enumerate(re.finditer(r'(\{(?:[^{}]++|(?R))*\})',json_string[l0:l1])):
 
             if i+1==idx:
@@ -203,10 +169,6 @@ def get_item_span(key='.*?',val='.*?',json_string='',observation_span=None,idx=N
         key_span=(k0+o0, k1+o0)
         value_span=(v0+o0, v1+o0)
 
-        # get_item_span.item_span=(i0+o0, i1+o0)
-        # get_item_span.key_span=(k0+o0, k1+o0)
-        # get_item_span.value_span=(v0+o0, v1+o0)
-
     else:
         print(f'Error Itemspan: {locals()}')
         
@@ -229,9 +191,6 @@ def get_errors(match_df,gold_df,pred_df):
     for m,match_row in match_df.iterrows():
         for k,v in match_row.items():
             k=k.replace('_score','')
-
-            #if not isinstance(v,(float,int)): continue
-            #if (k.endswith('_score')&(k!='mean_score')&(v<1.0)):
 
             if k not in pred_df.columns: continue #No value column
 
@@ -411,9 +370,7 @@ def get_error_spans(errors_df,gold_completion,pred_completion,verbose=False):
 
     errors_df[['gold_span','pred_span','gold_sub_spans','pred_sub_spans']]=None,None,None,None
 
-    #for error_row in errors_df.itertuples():
     for i,error_row in errors_df.iterrows():
-        #print(error_row.Index)
 
         if error_row['type'] in ['tp_obs','fp_obs']:
             obs_span=get_observation_span(error_row['p'],pred_completion,verbose=verbose)
@@ -459,23 +416,6 @@ def get_error_spans(errors_df,gold_completion,pred_completion,verbose=False):
   
     return errors_df
 
-
-error_highlight_colors={
-    'tp_val':'#DA70D6',
-    'fp_key':'#DE3163',
-    "fp_val":"#DA70D6",
-    "fn_val":"#DA70D6",
-    "fp_obs":"#DA70D6",
-    "fn_obs":"#DA70D6",
-    "total_val":"#FF0000",
-    "partial_val":"#FA8072",   
-}
-
-def get_red_hexgradient(score):
-    r = 255
-    g = b = int(255 * score)
-    return f"#{r:02X}{g:02X}{b:02X}"
-
 def get_char_highlighting(plain_text,errors_df,col='pred'):
 
     if errors_df.empty:
@@ -486,15 +426,16 @@ def get_char_highlighting(plain_text,errors_df,col='pred'):
     last_i1=0
 
     errors_df=errors_df[errors_df.is_error]
-    errors_df=errors_df[errors_df.type.isin(['tp_val','fp_val','fn_val','tp_obs','fp_obs','fn_obs'])]
+    errors_df=errors_df[errors_df.type.isin(['tp_val','fp_val','fn_val','fp_obs','fn_obs'])]
 
     for _,error_row in errors_df.sort_values(by=f"{col}_span").iterrows():
 
-        color=error_highlight_colors[error_row['type']]
+        if error_row['fuzzy_score'] == 1.0: continue
+        
         spans=error_row[f"{col}_sub_spans"]
-
         if not spans: continue
 
+        color=ERROR_COLORS_DICT[error_row['type']]
         for (i0,i1) in spans:
             fancy_text+=plain_text[last_i1:i0]+f'<span style="color:{color}">'+plain_text[i0:i1]+'</span>'
             last_i1=i1
@@ -594,13 +535,105 @@ def get_token_highlighting(tokens_df):
     for i,token_row in tokens_df.iterrows():
         
         prefix,suffix="",""
-        #if i%2 == 0: prefix,suffix="<u>","</u>" #mark single tokens
         fancy_text+=prefix+token_row['html_intro_tag']+token_row['chars']+token_row['html_outro_tag']+suffix
     
     return fancy_text
 
-#### Metric: Confusion with Fuzzy-Loss
 
+
+# RETRIEVAL METRICS with FUZZY SCORE
+def precision(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
+
+    if use_fuzzy and pd.notna(tp_fuzzy):
+        precision.label='P_fuzzy'
+        _tp=tp_fuzzy
+    else:
+        precision.label='P'
+        _tp=tp
+    
+    if fast_return=='best': return 1.0
+    elif fast_return=='worst': return 0.0
+
+    if not all([pd.notna(k) for k in [_tp,tp,fp]]): return None
+    if _tp==0: return 0.0
+
+    return _tp/(tp+fp)
+
+def recall(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
+    
+    if use_fuzzy and pd.notna(tp_fuzzy):
+        recall.label='R_fuzzy'
+        _tp=tp_fuzzy
+    else:
+        recall.label='R'
+        _tp=tp
+    
+    if fast_return=='best': return 1.0
+    elif fast_return=='worst': return 0.0
+
+    if not all([pd.notna(k) for k in [_tp,tp,fn]]): return None
+    if _tp==0: return 0.0
+
+    return _tp/(tp+fn)
+
+def accuracy(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
+    
+    if use_fuzzy and pd.notna(tp_fuzzy):
+        accuracy.label='ACC_fuzzy'
+        _tp=tp_fuzzy
+    else:
+        accuracy.label='ACC'
+        _tp=tp
+    
+    if fast_return=='best': return 1.0
+    elif fast_return=='worst': return 0.0
+    
+    if not all([pd.notna(k) for k in [_tp,tp,fp,fn,tn]]): return None
+
+    numerator=_tp+tn
+    if numerator==0: return 0.0
+
+    denominator=tp+fn+fp+tn
+    return numerator/denominator
+
+def balanced_error_rate(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
+
+    if use_fuzzy and pd.notna(tp_fuzzy):
+        balanced_error_rate.label='BER_fuzzy'
+        _tp=tp_fuzzy
+    else:
+        balanced_error_rate.label='BER'
+        _tp=tp
+
+    if fast_return=='best': return 0.0
+    elif fast_return=='worst': return 1.0
+
+    if not all([pd.notna(k) for k in [_tp,tp,fp,fn,tn]]): return None
+
+    ber=1.0
+    if (_tp+fn)!=0: ber-=0.5*(_tp/(tp+fn))
+    if (tn+fp)!=0: ber-=0.5*(tn/(tn+fp))
+
+    return ber
+
+def f1_score(tp=None,fp=None,fn=None,tn=None,tp_fuzzy=None,use_fuzzy=True,fast_return=None, **kwargs):
+
+    if use_fuzzy and pd.notna(tp_fuzzy):
+        f1_score.label='F1_fuzzy'
+        _tp=tp_fuzzy
+    else:
+        f1_score.label='F1'
+        _tp=tp
+
+    if fast_return=='best': return 1.0
+    elif fast_return=='worst':return 0.0
+
+    if _tp==0: return 0.0
+
+    return (_tp/(tp+0.5*(fp+fn)))
+
+
+# METRIC: Confusion with Fuzzy-Loss
 def get_conf_dict(errors_df):
 
     conf_dict=dict()
@@ -616,7 +649,6 @@ def get_conf_dict(errors_df):
     selected_df=errors_df[errors_df.key=='observations']
     conf_dict['obs']={
         'tp':len(selected_df[selected_df['type'].isin(['tp_obs'])]),
-        #'tp_fuzzy': selected_df[selected_df['type'].isin(['tp_obs'])]['fuzzy_score'].sum(),
         'fp':len(selected_df[selected_df['type'].isin(['fp_obs'])]),
         'fn':len(selected_df[selected_df['type'].isin(['fn_obs'])]),
         'tn':len(selected_df[selected_df['type'].isin(['tn_obs'])]),
@@ -634,8 +666,10 @@ def get_conf_dict(errors_df):
         }
 
     #OBSERVATION VALUES
+
     if errors_df.attrs['has_meta_row']: selected_df=errors_df[(errors_df.g!=0)&(errors_df.p!=0)]
     else: selected_df=errors_df
+
     conf_dict['attr']={
         'tp':len(selected_df[selected_df.type.isin(['tp_val'])]),
         'tp_fuzzy':selected_df[selected_df.type.isin(['tp_val'])]['fuzzy_score'].sum(),
@@ -643,7 +677,7 @@ def get_conf_dict(errors_df):
         'fn':len(selected_df[selected_df.type.isin(['fn_val'])]),
         'tn':len(selected_df[selected_df.type.isin(['tn_val'])]),
     }
-    
+
     return conf_dict
 
 def get_eval_dict(conf_dict):
@@ -675,3 +709,5 @@ def get_eval_dict(conf_dict):
     eval_dict['total_score']=eval_dict['obs']['F1']*eval_dict['attr']['F1_fuzzy']
     
     return eval_dict
+
+

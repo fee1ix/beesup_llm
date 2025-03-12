@@ -38,44 +38,81 @@ def camel_to_snake(name: str) -> str:
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
+def get_state_str(state: TrainerState) -> str:
+    return f"{state.epoch}-{state.global_step}"
 
-class EvaluatorCallback(TrainerCallback):
-
-    def __init__(self, experiment, evaluator: LLMEvaluator, **kwargs):
-
+class ExperimentCallback(TrainerCallback):
+    
+    def __init__(self, experiment, **kwargs):
         self.experiment=experiment
-        self.evaluator=evaluator
         self.output_dir=getattr(self.experiment,'sft_config',{}).get('output_dir','.')
-    
-    @property
-    def snake_name(self):
-        return camel_to_snake(self.__class__.__name__)
-    
-    def get_df_name(self, state: TrainerState) -> str:
-        return f"{self.snake_name}_{state.global_step}_{self.output_name}_df.pkl"
-    
-    def do_log(self, state: TrainerState) -> None:
-        self.experiment.logger.info(f"epoch {state.epoch}/ global_step {state.global_step} --> {self.get_df_name(state)}")	
+
+        self.class_str=camel_to_snake(self.__class__.__name__)
+        self.object_str=str()
 
     def save_df(self, df: pd.DataFrame, state: TrainerState) -> None:
-        df_name=self.get_df_name(state)
-        df_path=f"{self.output_dir}/{df_name}"
-        df.to_pickle(df_path)
-        self.experiment.logger.info(f"Saved results to {df_path}")
-    
-    def on_epoch_end(self, args, state, control, **kwargs):
-        return 
+        self.state_str=get_state_str(state)
 
-class LogHistoryCallback(TrainerCallback):
-    def __init__(self, experiment):
-        self.experiment=experiment
+        file_path=f"{self.output_dir}/"
+        file_name='_'.join([s for s in [self.state_str, self.object_str, self.class_str, 'df.pkl'] if s])
+        file_path+=file_name
+
+        df.to_pickle(file_path)
+        self.experiment.logger.info(f"{self.state_str} {self.object_str} Saved results to '{file_path}'")
+
 
     def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
-        log_history_df=pd.DataFrame(state.log_history)
-        log_history_df.to_pickle(f"{self.experiment._path}/log_history_df.pkl")
+        self.state_str=get_state_str(state)
+        self.experiment.logger.info(f"{self.state_str} {self.object_str} Start Evaluation")
+        return
+
+
+class EvaluatorCallback(ExperimentCallback):
+
+    def __init__(self, *args, evaluator: LLMEvaluator, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if _isinstance(evaluator, LLMEvaluator):
+            self.evaluator=evaluator
+    
+    # def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
+    #     super().on_epoch_end(args, state, control, **kwargs)
+    #     return
+
+
+class MCECallback(ExperimentCallback):
+    """Multiclass Cross Entropy Loss Evaluator Callback,
+
+    fetches sample-mapped loss data from Custom Trainer Wrapper
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.loss_data=[]
+
+    def add_loss_data(self, data: list) -> None:
+        self.loss_data.extend(data)
+
+    def on_epoch_end(self, args, state, control, **kwargs) -> None:
+        super().on_epoch_end(args, state, control, **kwargs)
+
+        callback_df=pd.DataFrame(self.loss_data)
+        self.loss_data = [] #reset loss data
+
+        self.save_df(callback_df, state)
+        return
+
+class HistoryCallback(ExperimentCallback):
+
+    def on_epoch_end(self, args, state, control, **kwargs) -> None:
+        super().on_epoch_end(args, state, control, **kwargs)
+
+        callback_df=pd.DataFrame(state.log_history)
+        self.save_df(callback_df, state)
+        return
+
 
 class CustomSFTTrainer(SFTTrainer):
-    """Custom SFTTrainer that stores per-sample losses during training."""
+    """Custom SFTTrainer that stores per-sample losses during training. Required when using a MCECallback."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -129,7 +166,7 @@ class CustomSFTTrainer(SFTTrainer):
         return (loss, outputs) if return_outputs else loss
 
 class CustomDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
-    """Custom DataCollatorForSeq2Seq that returns sample IDs in the batch."""
+    """Custom DataCollatorForSeq2Seq that returns sample IDs in the batch. Required when using a MCECallback."""
     def __call__(self, features, return_tensors=None):
         if return_tensors is None:
             return_tensors = self.return_tensors
@@ -307,12 +344,14 @@ class FinetuningExperiment(object):
         self.logger.info(f"Evaluating base model")
 
         for evaluator in self.evaluators:
-            evaluator_callback=callback_class(evaluator, self, **kwargs)
+            evaluator_callback=callback_class(self, evaluator, **kwargs) #self = this experiment
             evaluator_callback.on_epoch_end(state=TrainerState(epoch=0), model=self.llm_pipe.get_model(), **kwargs)
 
         return
     
     def train(self, **kwargs) -> None:
+
+        self.logger.info(f"Start Training")
 
         with open(f"{self.sft_config['output_dir']}/trainer_args.yaml", 'w') as file:
             yaml.dump(self.trainer.args.to_dict(), file, sort_keys=False, default_flow_style=False)
@@ -325,12 +364,19 @@ class FinetuningExperiment(object):
         if hasattr(self, 'save_config'): self.save_config()
         return
 
-    def run(self, **kwargs) -> None:
+    def run_entry(self, **kwargs) -> None:
 
+        self.train_ds=self.train_ds.select([0, 1, 2]) #
+
+        self.logger.info(f"Run Experiment")
         self.timestamp_start=get_timestamp()
         self.llm_pipe.prepare_inference()
         self.load_data(**kwargs)
-        
+        return
+
+    def run(self, **kwargs) -> None:
+        self.run_entry(**kwargs)
+
         if self.do_eval_base_model:
             self.evaluate_base_model(**kwargs)
         
@@ -339,15 +385,21 @@ class FinetuningExperiment(object):
 
         if self.do_eval_lora_model:
             for evaluator in self.evaluators:
-                evaluator_callback=EvaluatorCallback(evaluator, self, **kwargs)
+                evaluator_callback=EvaluatorCallback(self, evaluator, **kwargs)
                 self.trainer.add_callback(evaluator_callback)
         
         if self.do_train:
+            for trainer_callback in [MCECallback(self), HistoryCallback(self)]:
+                self.trainer.add_callback(trainer_callback)
             self.train(**kwargs)
+        
+        self.run_exit(**kwargs)
+        return
 
+    def run_exit(self, **kwargs) -> None:
         self.done=True
         self.timestamp_done=get_timestamp()
-        return
+        if hasattr(self, 'save_config'): self.save_config()
 
 
     
