@@ -3,7 +3,7 @@ from beesup_llm.llm import LLMPipeline
 
 import logging
 import pandas as pd
-from typing import Union 
+from typing import Union
 
 
 class LLMEvaluator(object):
@@ -57,10 +57,10 @@ class LLMEvaluator(object):
 
         if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe = self.fit_llm_pipe(llm_pipe)
-            self.logger.info(f"using llm_pipe from arg")
+            self.logger.debug(f"using llm_pipe from arg")
         else:
             llm_pipe=self.llm_pipe
-            self.logger.info(f"using llm_pipe from self")
+            self.logger.debug(f"using llm_pipe from self")
 
         pipe_df=llm_pipe.add_pred_completion(pipe_df, **kwargs)
 

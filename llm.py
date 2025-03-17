@@ -3,11 +3,11 @@ import logging
 import warnings
 import pandas as pd
 
-from typing import Union
+from typing import Union, List, Any, Dict
 
 from beesup_llm import get_labhandler, _isinstance
 
-from threading import Thread
+from threading import Thread, Event
 from transformers import \
     AutoTokenizer, \
     AutoModelForCausalLM, \
@@ -179,7 +179,7 @@ class LLMPipeline(object):
         if not hasattr(self, 'inference_tokenizer'): self.load_tokenizer('inference')
         if not hasattr(self, 'pipeline'): self.load_pipeline()
     
-    def yield_completion_stream(self, pipe_input, **kwargs):
+    def yield_completion_stream(self, pipe_input, stop_event: Event=None, **kwargs):
 
         self.prepare_inference()
         streamer = TextIteratorStreamer(self.inference_tokenizer, skip_prompt=True)
@@ -204,6 +204,11 @@ class LLMPipeline(object):
                 new_token=new_token.replace(self.inference_tokenizer.eos_token,'') # remove eos_token
 
                 yield new_token
+
+                # Check and handle stop_event if it's set
+                if stop_event and stop_event.is_set():
+                    stop_event.clear()
+                    break
 
             streamer_thread.join()
         

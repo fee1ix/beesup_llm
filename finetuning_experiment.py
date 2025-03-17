@@ -38,34 +38,34 @@ def camel_to_snake(name: str) -> str:
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
-def get_state_str(state: TrainerState) -> str:
-    return f"{state.epoch}-{state.global_step}"
+def get_state_tag(state: TrainerState) -> str:
+    return f"{int(state.epoch)}-{int(state.global_step)}"
 
 class ExperimentCallback(TrainerCallback):
+
+    logger=logging.getLogger(__name__)
     
     def __init__(self, experiment, **kwargs):
         self.experiment=experiment
         self.output_dir=getattr(self.experiment,'sft_config',{}).get('output_dir','.')
 
-        self.class_str=camel_to_snake(self.__class__.__name__)
-        self.object_str=str()
+        self.class_tag=camel_to_snake(self.__class__.__name__)
+        self.object_tag=str()
 
     def save_df(self, df: pd.DataFrame, state: TrainerState) -> None:
-        self.state_str=get_state_str(state)
+        self.state_tag=get_state_tag(state)
 
         file_path=f"{self.output_dir}/"
-        file_name='_'.join([s for s in [self.state_str, self.object_str, self.class_str, 'df.pkl'] if s])
+        file_name='_'.join([s for s in [self.state_tag, self.object_tag, self.class_tag, 'df.pkl'] if s])
         file_path+=file_name
 
         df.to_pickle(file_path)
-        self.experiment.logger.info(f"{self.state_str} {self.object_str} Saved results to '{file_path}'")
-
+        self.logger.debug(f"{self.state_tag} {self.object_tag} Saved results to '{file_path}'")
 
     def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
-        self.state_str=get_state_str(state)
-        self.experiment.logger.info(f"{self.state_str} {self.object_str} Start Evaluation")
+        self.state_tag=get_state_tag(state)
+        self.logger.info(f"Start Evaluation {self.class_tag} {self.object_tag} {self.state_tag}")
         return
-
 
 class EvaluatorCallback(ExperimentCallback):
 
@@ -75,18 +75,14 @@ class EvaluatorCallback(ExperimentCallback):
         if _isinstance(evaluator, LLMEvaluator):
             self.evaluator=evaluator
     
-    # def on_epoch_end(self, args=None, state=None, control=None, **kwargs):
-    #     super().on_epoch_end(args, state, control, **kwargs)
-    #     return
-
 
 class MCECallback(ExperimentCallback):
     """Multiclass Cross Entropy Loss Evaluator Callback,
 
     fetches sample-mapped loss data from Custom Trainer Wrapper
     """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.loss_data=[]
 
     def add_loss_data(self, data: list) -> None:
@@ -205,10 +201,10 @@ class FinetuningExperiment(object):
             evaluators:list=[],
             labh=get_labhandler(),
             **kwargs):
-        
+
         self.label=label
-        self.done=False
-        
+        self.done=kwargs.get('done',False)
+
         self.do_eval_base_model=kwargs.get('do_eval_base_model',True)
         self.do_eval_lora_model=kwargs.get('do_eval_lora_model',True)
         self.do_train=kwargs.get('do_train',True)
@@ -227,13 +223,16 @@ class FinetuningExperiment(object):
         #SUPERVISED FINE-TUNING TRAINER CONFIG
         self.sft_config=kwargs.get('sft_config',dict(
             num_train_epochs=kwargs.get('num_train_epochs',10),
-            output_dir=kwargs.get('output_dir','.'),
+            # Use the provided 'output_dir' if available; otherwise, fall back to '_path' attribute if it exists.
+            # If '_path' is not set, default to the current directory ('.').
+            output_dir=kwargs.get('output_dir', getattr(self, '_path', '.')),
             auto_find_batch_size=kwargs.get('auto_find_batch_size',True),
             per_device_train_batch_size=kwargs.get('per_device_train_batch_size',8),
             gradient_accumulation_steps=kwargs.get('gradient_accumulation_steps',1),
             learning_rate=kwargs.get('learning_rate',0.0002),
             optim=kwargs.get('optim','paged_adamw_8bit'),
             save_strategy=kwargs.get('save_strategy','no'),
+            save_total_limit=kwargs.get('save_total_limit',1),
             eval_strategy=kwargs.get('eval_strategy','no'),
             logging_strategy=kwargs.get('logging_strategy','steps'),
             logging_steps=kwargs.get('logging_steps',1),
@@ -246,14 +245,15 @@ class FinetuningExperiment(object):
             seed=kwargs.get('seed',42)
         ))
 
+
         if labh is not None:
             self.labh=labh(locals())
             data_df=self.labh.handle_object(locals(),'data_df')
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
             evaluators=self.labh.handle_object(locals(),'evaluators')
-            self.sft_config['output_dir']=self._path
+            self.sft_config['output_dir']=getattr(self,'_path', self.sft_config['output_dir'])
 
-            #if self.is_saved:
+
 
         if isinstance(data_df, pd.DataFrame):
             self.data_df = data_df.copy(); del data_df
@@ -264,8 +264,9 @@ class FinetuningExperiment(object):
 
         if isinstance(evaluators, list) and all([_isinstance(e, LLMEvaluator) for e in evaluators]):
             self.evaluators=evaluators
-    
+        
     def load_data(self, **kwargs) -> None:
+        self.logger.info(f"Loading data")
 
         assert hasattr(self, 'data_df'), "data_df is missing"
         assert 'split' in self.data_df.columns, "split column is missing"
@@ -290,6 +291,12 @@ class FinetuningExperiment(object):
         self.logger.info(f"Loading Lora model")
 
         model=self.llm_pipe.get_model()
+
+        if isinstance(model, PeftModel) or (hasattr(model,'peft_config')):
+            self.logger.info('Model is already prepared for lora')
+            return model
+
+
         lora_config=LoraConfig(**self.lora_config)
 
         model.gradient_checkpointing_enable()
@@ -342,9 +349,13 @@ class FinetuningExperiment(object):
     
     def evaluate_base_model(self, callback_class = EvaluatorCallback, **kwargs) -> None:
         self.logger.info(f"Evaluating base model")
+        evaluators=kwargs.get('evaluators', self.evaluators)
 
-        for evaluator in self.evaluators:
-            evaluator_callback=callback_class(self, evaluator, **kwargs) #self = this experiment
+        for evaluator in evaluators:
+            evaluator_callback=callback_class(
+                experiment=self,
+                evaluator=evaluator, 
+                **kwargs)
             evaluator_callback.on_epoch_end(state=TrainerState(epoch=0), model=self.llm_pipe.get_model(), **kwargs)
 
         return
@@ -365,13 +376,11 @@ class FinetuningExperiment(object):
         return
 
     def run_entry(self, **kwargs) -> None:
-
-        self.train_ds=self.train_ds.select([0, 1, 2]) #
-
-        self.logger.info(f"Run Experiment")
         self.timestamp_start=get_timestamp()
+        self.logger.info(f"Run Experiment")
         self.llm_pipe.prepare_inference()
         self.load_data(**kwargs)
+        self.train_ds=self.train_ds.select([0, 1, 2, 4]) #for testing
         return
 
     def run(self, **kwargs) -> None:
@@ -399,11 +408,8 @@ class FinetuningExperiment(object):
     def run_exit(self, **kwargs) -> None:
         self.done=True
         self.timestamp_done=get_timestamp()
+        self.logger.info(f"Done Experiment")
         if hasattr(self, 'save_config'): self.save_config()
-
-
-    
-   
 
 
     

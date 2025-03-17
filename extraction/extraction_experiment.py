@@ -25,7 +25,7 @@ class ExtractionEvaluator(LLMEvaluator):
     
     def __call__(self, **kwargs) -> pd.DataFrame:
 
-        pipe_df=self.eval_df.copy()
+        pipe_df=self.eval_df.iloc[:2].copy()
         self.add_pred_completion(pipe_df, **kwargs)
 
         self.extraction_pipe.add_pred_dict(pipe_df, **kwargs)
@@ -39,13 +39,12 @@ class ExtractionCallback(EvaluatorCallback):
         super().on_epoch_end(args, state, control, **kwargs)
 
         if not self.evaluator.is_eval_epoch(state.epoch):
-            self.experiment.logger.info(f"{self.state_str} Skip, because {state.epoch} not in {self.evaluator.eval_epochs=}")
+            self.experiment.logger.info(f"{self.state_tag} Skip, because {state.epoch} not in {self.evaluator.eval_epochs=}")
             return #skip evaluation if not specified as eval epoch
 
-        model=kwargs['model']
+        model=kwargs.pop('model')
         model.eval()
 
-        self.experiment.logger.info(f"{self.state_str} {self.object_str} {kwargs=}")
         callback_df=self.evaluator(
             llm_pipe=self.experiment.llm_pipe.__class__(model=model),
             **kwargs)
@@ -61,6 +60,8 @@ class ExtractionExperiment(FinetuningExperiment):
         return llm_pipe
 
     def __init__(self, *args, extraction_pipe: ExtractionPipeline = None, **kwargs) -> None:
+
+        self.eval_epochs=kwargs.get('eval_epochs', [])
         super().__init__(*args, **kwargs)
 
         assert self.evaluators == [], "evaluators should be empty" #evaluator is derrived from extraction_pipe in run()
@@ -99,22 +100,24 @@ class ExtractionExperiment(FinetuningExperiment):
     def run(self, **kwargs) -> None:
         self.run_entry(**kwargs)
 
-        self.evaluators=[
+        evaluators=[
             ExtractionEvaluator(
-                extraction_pipe=self.extraction_pipe,
                 eval_df=self.eval_df,
                 llm_pipe=self.llm_pipe,
+                eval_epochs=self.eval_epochs,
+                extraction_pipe=self.extraction_pipe,
+                labh=None,
                 **kwargs)]
 
         if self.do_eval_base_model:
-            self.evaluate_base_model(**kwargs)
+            self.evaluate_base_model(evaluators=evaluators, callback_class=ExtractionCallback,**kwargs)
         
         if (self.do_eval_lora_model or self.do_train):
             self.load_trainer(**kwargs)
 
         if self.do_eval_lora_model:
-            for evaluator in self.evaluators:
-                evaluator_callback=EvaluatorCallback(self, evaluator, **kwargs)
+            for evaluator in evaluators:
+                evaluator_callback=ExtractionCallback(experiment=self, evaluator=evaluator, **kwargs)
                 self.trainer.add_callback(evaluator_callback)
         
         if self.do_train:

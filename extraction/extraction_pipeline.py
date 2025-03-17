@@ -237,11 +237,13 @@ class ExtractionPipeline(object):
 
         return pipe_df
 
-    def call_on_single(self, report_passage:str, gold_completion:str=None,  **kwargs) -> str:
+    def call_on_single(self, report_passage:str, gold_completion:str=None, **kwargs) -> str:
         llm_pipe=self.fit_llm_pipe(kwargs.get('llm_pipe', self.llm_pipe))
 
         prompt_messages=get_prompt_messages(report_passage, **kwargs)
+
         pred_completion = llm_pipe(prompt_messages, **kwargs) #streaming possible
+
         pred_dict=self.get_pred_dict(pred_completion, **kwargs)
         self._pred_dict=pred_dict
 
@@ -257,6 +259,7 @@ class ExtractionPipeline(object):
         report_passage=sample.pop('report_passage')
         return self.call_on_single(report_passage, **sample, **kwargs)   
 
+
     def __call__(self, pipe_input, **kwargs):
 
         if isinstance(pipe_input, pd.DataFrame):
@@ -269,98 +272,6 @@ class ExtractionPipeline(object):
             return self.call_on_single(pipe_input, **kwargs)
 
     
-
-    # @staticmethod
-    # def get_pred_parse_only(pred_completion, **kwargs):
-    #     sample=ExtractionSample(pred_completion=pred_completion)
-    #     sample.parse_df()
-    #     return sample.pred_df
-
-    # def get_pred(self, report_passage, llm_pipe, **kwargs):
-
-    #     llm_pipe.prepare_inference()
-    #     prompt_messages=get_prompt_messages(report_passage, **self.get_prompting_config(**kwargs))
-
-    #     pred_completion=''
-    #     for new_token in llm_pipe.get_pipeline_stream(prompt_messages, **kwargs):
-    #         pred_completion+=new_token
-    #         print(new_token, end='', flush=True)
-        
-    #     return self.get_pred_parse_only(pred_completion,**kwargs)
-
-    # def prepare_df_for_completion(self, df, **kwargs):
-    #     assert 'report_passage' in df.columns, "df must have 'prompt_messages' column"
-    #     df['prompt_messages']=df['report_passage'].apply(lambda x: get_prompt_messages(x,**self.get_prompting_config(**kwargs)))
-    #     return df
-    
-    # def prepare_df_for_finetuning(self, df, **kwargs):
-    #     assert 'gold_completion' in df.columns, "df must have 'gold_completion' column"
-    #     df=self.prepare_df_for_completion(df, **kwargs)
-    #     df['gold_message']=df['gold_completion'].apply(lambda x: [{'role':'assistant','content': x}])
-    #     return df
-
-    # def get_ds_for_finetuning(self, df, tokenizer, **kwargs):
-    #     assert 'prompt_messages' in df.columns, "df must have 'prompt_messages' column"
-    #     assert 'gold_message' in df.columns, "df must have 'gold_message' column"
-    #     ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_finetuning(x, tokenizer),axis=1).to_list())
-    #     return ds
-    
-    # def get_ds_for_completion(self, df, tokenizer, **kwargs):
-    #     assert 'prompt_messages' in df.columns, "df must have 'prompt_messages' column"
-    #     ds=Dataset.from_list(df.apply(lambda x: prepare_sample_for_chat_completion(x, tokenizer),axis=1).to_list())
-    #     return ds
-
-    # @staticmethod
-    # def get_pred_df_parse_only(df, **kwargs):
-    #     assert 'pred_completion' in df.columns, "missing 'pred_completion' column"
-        
-    #     df[['pred_json','pred_is_valid','pred_is_empty']]=None,None,None
-    #     for i,row in df.iterrows():
-    #         try:
-    #             sample=ExtractionSample(pred_completion=row['pred_completion'])
-    #             df.at[i,'pred_json']=sample.pred_json
-    #             df.at[i,'pred_is_valid']=sample.pred_is_valid
-    #             df.at[i,'pred_is_empty']=sample.pred_is_empty
-
-    #         except: pass
-        
-    #     return df
-
-    # def get_pred_df(self, df, llm_pipe, **kwargs):
-
-    #     df = self.prepare_df_for_completion(df, **kwargs)
-    #     llm_pipe.prepare_inference()
-
-    #     df = llm_pipe.get_pred_df(df, **kwargs)
-    #     self.llm_pipe._recent_generation_config=llm_pipe._recent_generation_config
-    #     df = self.get_pred_df_parse_only(df)
-    #     return df
- 
-    # def __call__(self, the_input, llm_ref=None, **kwargs):
-
-    #     if llm_ref:
-    #         llm_pipe=LanguageModelPipeline.from_ref(llm_ref)
-    #         llm_pipe.update_config(self.llm_config)
-    #         #llm_pipe.update_config(self._default_config['llm_config'])
-    
-    #     elif hasattr(self, 'llm_pipe'):
-    #         llm_pipe=self.llm_pipe
-
-    #     if isinstance(the_input, str): #input is a single report passage
-    #         return self.get_pred(the_input, llm_pipe, **kwargs)
-        
-    #     elif isinstance(the_input, pd.DataFrame): #input is a dataframe containing a column 'report_passage'
-    #         return self.get_pred_df(the_input, llm_pipe, **kwargs)
-
-    #     elif isinstance(the_input, Dataset):
-    #         self.logger.info("Dataset input detected")
-
-    #     return
-
-
-
-    
-
     
 
 
