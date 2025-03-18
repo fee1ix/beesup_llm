@@ -1,6 +1,6 @@
 
 from beesup_llm import get_labhandler, _isinstance
-from beesup_llm.llm_evaluation import *
+from beesup_llm.evaluation import *
 from beesup_llm.injection import *
 #from beesup_llm.injection.taxomizer import *
 #from beesup_llm.injection.rag import RAGPipeline

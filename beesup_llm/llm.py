@@ -66,6 +66,58 @@ def prepare_sample_for_chat_finetuning(the_input: Union[pd.Series, dict], tokeni
 
 
 class LLMPipeline(object):
+    """
+    LLMPipeline is a class designed to manage the lifecycle of a language model pipeline, including loading models, tokenizers, 
+    and pipelines, as well as generating text outputs and handling inference tasks.
+    Attributes:
+        logger (logging.Logger): Logger instance for logging messages.
+        model (Optional[AutoModelForCausalLM]): The language model used for inference.
+        name_or_path (Optional[str]): The name or path of the model.
+        generation_config (dict): Configuration for text generation.
+        inference_tokenizer_config (dict): Configuration for the inference tokenizer.
+        training_tokenizer_config (dict): Configuration for the training tokenizer.
+        pipeline_args (dict): Arguments for the text generation pipeline.
+        labh (Optional[Callable]): Optional lab handler for managing local variables.
+    Methods:
+        from_model(cls, model=None):
+            Creates an instance of LLMPipeline or a subclass based on the model's name or path.
+        __init__(self, ref=None, labh=get_labhandler(), **kwargs):
+            Initializes the LLMPipeline instance with optional configurations.
+        load_model(self):
+            Loads the language model with specified configurations.
+        get_model(self):
+            Retrieves the loaded model, loading it if necessary.
+        load_tokenizer(self, tokenizer_type='inference'):
+            Loads the tokenizer for the specified type (inference or training).
+        get_tokenizer(self, tokenizer_type='inference'):
+            Retrieves the loaded tokenizer, loading it if necessary.
+        count_tokens(self, pipe_input):
+            Counts the number of tokens in the input using the tokenizer.
+        load_pipeline(self, **kwargs):
+            Loads the text generation pipeline with the model and tokenizer.
+        get_pipeline(self, **kwargs):
+            Retrieves the loaded pipeline, loading it if necessary.
+        prepare_inference(self):
+            Prepares the model, tokenizer, and pipeline for inference.
+        yield_completion_stream(self, pipe_input, stop_event: Event=None, **kwargs):
+            Generates text in a streaming manner, yielding tokens as they are generated.
+        print_completion_stream(self, pipe_input, **kwargs):
+            Prints the generated text in a streaming manner and returns the full completion.
+        get_output(self, pipe_input, **kwargs):
+            Generates text output for the given input using the pipeline.
+        get_pred_completion(self, pipe_input, **kwargs):
+            Retrieves the generated text from the pipeline output.
+        add_pred_completion(self, pipe_df: pd.DataFrame, **kwargs):
+            Adds the generated text as a new column in the given DataFrame.
+        call_on_dataframe(self, pipe_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+            Applies the pipeline to a DataFrame and returns the updated DataFrame.
+        call_on_single(self, pipe_input: Union[str, list], use_chatformat=False, stream=False, **kwargs) -> str:
+            Applies the pipeline to a single input and returns the generated text.
+        call_on_sample(self, sample: Union[pd.Series, dict], **kwargs) -> str:
+            Applies the pipeline to a single sample (Series or dict) and returns the generated text.
+        __call__(self, pipe_input, stream=False, use_chatformat=False, **kwargs):
+            Entry point for applying the pipeline to various input types (DataFrame, Series, dict, or string).
+    """
 
     logger = logging.getLogger(__name__)
 

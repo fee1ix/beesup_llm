@@ -4,8 +4,8 @@ import pandas as pd
 from typing import Union
 from beesup_llm import _isinstance
 from beesup_llm.finetuning_experiment import *
-from beesup_llm.llm_evaluation import LLMEvaluator	
-from beesup_llm.extraction.extraction_pipeline import ExtractionPipeline
+from beesup_llm.evaluation import LLMEvaluator	
+from beesup_llm.extraction.pipeline import ExtractionPipeline
 
 class ExtractionEvaluator(LLMEvaluator):
     def __init__(self, *args, extraction_pipe: ExtractionPipeline=None, **kwargs) -> None:
@@ -25,7 +25,7 @@ class ExtractionEvaluator(LLMEvaluator):
     
     def __call__(self, **kwargs) -> pd.DataFrame:
 
-        pipe_df=self.eval_df.iloc[:2].copy()
+        pipe_df=self.eval_df.copy()
         self.add_pred_completion(pipe_df, **kwargs)
 
         self.extraction_pipe.add_pred_dict(pipe_df, **kwargs)
@@ -81,7 +81,7 @@ class ExtractionExperiment(FinetuningExperiment):
 
         assert 'report_passage' in self.data_df.columns, "missing 'report_passage' column"
         assert 'gold_completion' in self.data_df.columns, "missing 'gold_completion' column"
-        
+
         #prepare training data
         train_df=self.data_df[self.data_df['split']=='train'].reset_index(drop=True).copy()
         self.extraction_pipe.add_prompt_messages(train_df, **kwargs)
@@ -94,6 +94,12 @@ class ExtractionExperiment(FinetuningExperiment):
         if not train_df.empty:
             self.llm_pipe.load_tokenizer('training')
             self.train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_tokenizer('training'),**kwargs), axis=1).to_list())
+        
+
+        if getattr(self, 'test_mode', False):
+            self.eval_df=self.eval_df.iloc[:4].copy()
+            self.train_ds=self.train_ds.select([0, 1, 2, 4])
+
         
         return
 

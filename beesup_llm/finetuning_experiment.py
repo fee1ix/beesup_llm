@@ -1,5 +1,5 @@
 from beesup_llm import get_labhandler, _isinstance
-from beesup_llm.llm_evaluation import LLMEvaluator
+from beesup_llm.evaluation import LLMEvaluator
 from beesup_llm.llm import LLMPipeline, prepare_sample_for_chat_completion, prepare_sample_for_chat_finetuning
 
 import logging
@@ -75,7 +75,6 @@ class EvaluatorCallback(ExperimentCallback):
         if _isinstance(evaluator, LLMEvaluator):
             self.evaluator=evaluator
     
-
 class MCECallback(ExperimentCallback):
     """Multiclass Cross Entropy Loss Evaluator Callback,
 
@@ -208,6 +207,8 @@ class FinetuningExperiment(object):
         self.do_eval_base_model=kwargs.get('do_eval_base_model',True)
         self.do_eval_lora_model=kwargs.get('do_eval_lora_model',True)
         self.do_train=kwargs.get('do_train',True)
+
+        self.test_mode=kwargs.get('test_mode', False)
     
         #LORA CONFIG
         self.lora_config=kwargs.get('lora_config',dict(
@@ -264,6 +265,10 @@ class FinetuningExperiment(object):
 
         if isinstance(evaluators, list) and all([_isinstance(e, LLMEvaluator) for e in evaluators]):
             self.evaluators=evaluators
+        
+        if getattr(self, 'test_mode', False):
+            self.sft_config['num_train_epochs']=2
+
         
     def load_data(self, **kwargs) -> None:
         self.logger.info(f"Loading data")
@@ -380,7 +385,6 @@ class FinetuningExperiment(object):
         self.logger.info(f"Run Experiment")
         self.llm_pipe.prepare_inference()
         self.load_data(**kwargs)
-        self.train_ds=self.train_ds.select([0, 1, 2, 4]) #for testing
         return
 
     def run(self, **kwargs) -> None:

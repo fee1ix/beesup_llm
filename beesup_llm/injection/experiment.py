@@ -3,9 +3,9 @@ import pandas as pd
 
 from beesup_llm import _isinstance
 from beesup_llm.finetuning_experiment import *
-from beesup_llm.injection.rag import RAGPipeline
+from beesup_llm.rag import RAGPipeline
 from beesup_llm.injection.taxomizing import Taxomizer
-from beesup_llm.injection.injection_evaluation import *
+from beesup_llm.injection.evaluation import *
 
 class InjectionCallback(EvaluatorCallback):
 
@@ -30,6 +30,10 @@ class InjectionCallback(EvaluatorCallback):
         model.eval()
 
         pipe_df=self.evaluator.eval_df.copy()
+
+        if getattr(self.experiment, 'test_mode', False):
+            pipe_df=pipe_df.iloc[:4].copy()
+
         if hasattr(self,'rag_pipe'):
             kwargs.update({k: getattr(self.rag_pipe, k, None) for k in ['chunk_txt_key', 'query_txt_key']})
             self.rag_pipe.add_ranking_df(pipe_df)

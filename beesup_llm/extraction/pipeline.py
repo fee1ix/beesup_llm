@@ -1,18 +1,5 @@
-# from beesup_llm import *
-
-# from ..toolkit.setup_utils import *
-# from ..toolkit.llm_utils import *
-
-# from .extraction_utils import *
-
-# from beesup_llm.dataset import *
-# #from beesup_llm.model import *
-# from beesup_llm.model_pipelines import *
-
-# from datasets import Dataset
-
 from beesup_llm import get_labhandler, _isinstance
-from beesup_llm.extraction.extraction_utils import *
+from beesup_llm.extraction.utils import *
 from beesup_llm.extraction.evaluation_utils import *
 from beesup_llm.llm import LLMPipeline
 
@@ -21,8 +8,44 @@ from typing import Union
 
 import pandas as pd
 
-
-class ExtractionSample(object):
+class ExtractionSample:
+    """   
+    ExtractionSample is a class designed to evaluate and compare predicted and gold-standard completions 
+    in the context of data extraction tasks. It provides methods for parsing, evaluating, and highlighting 
+    differences between the predicted and gold-standard data.
+    Attributes:
+        pred_completion (str): The predicted completion string.
+        gold_completion (str): The gold-standard completion string. Default is None.
+        match_df (DataFrame): DataFrame containing matches between gold and predicted data.
+        errors_df (DataFrame): DataFrame containing errors between gold and predicted data.
+        conf_dict (dict): Dictionary containing confidence metrics.
+        eval_dict (dict): Dictionary containing evaluation metrics.
+        total_score (float): Total evaluation score.
+        raw_match_df (DataFrame): DataFrame containing raw matches for highlighting.
+        raw_errors_df (DataFrame): DataFrame containing raw errors for highlighting.
+        raw_conf_dict (dict): Dictionary containing raw confidence metrics.
+        raw_eval_dict (dict): Dictionary containing raw evaluation metrics.
+        raw_total_score (float): Total raw evaluation score.
+        gold_highlighting (str): Highlighted gold completion string.
+        pred_highlighting (str): Highlighted predicted completion string.
+    Methods:
+        __init__(pred_completion: str, gold_completion: str = None, **kwargs):
+            Initializes the ExtractionSample object, parses the input data, and evaluates if gold_completion is provided.
+        parse_json(prefix='pred', exclude_none=True):
+            Parses the completion string into a JSON object and validates it.
+        parse_df(prefix='pred', create_meta_row=False):
+            Converts the parsed JSON object into a DataFrame for further processing.
+        evaluate():
+            Compares the gold and predicted DataFrames, calculates matches, errors, and evaluation metrics.
+        evaluate_raw():
+            Performs raw evaluation by creating meta rows in the DataFrames for highlighting purposes.
+        load_highlighting():
+            Generates character-level highlighting for gold and predicted completions based on errors.
+        get_errors_df():
+            Returns a copy of the errors DataFrame.
+        __repr__():
+            Provides a formatted representation of the object, including highlighted gold and predicted completions.
+        """
     
     def __init__(self, pred_completion:str, gold_completion:str=None, **kwargs) -> None:
 
@@ -146,12 +169,12 @@ class ExtractionSample(object):
             if not hasattr(self, 'gold_highlighting'): self.load_highlighting()
             if not hasattr(self, 'pred_highlighting'): self.load_highlighting()
 
-            from beede_llm.src.utils import print_multicol
+            from beesup_llm.toolkit.visualization import print_multicol
             print_multicol(["<h2>GOLD-LABEL</h2>",f"<h2>PREDICTION (S<sub>extract</sub>={self.total_score:.3f})</h2>"])
             print_multicol([self.gold_highlighting,self.pred_highlighting])
         return ''
 
-class ExtractionPipeline(object):
+class ExtractionPipeline:
 
     logger=logging.getLogger(__name__)
 

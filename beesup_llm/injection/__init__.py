@@ -20,7 +20,6 @@ Wildbienen
         └──  Wildbienenarten der Dünen-Steppenbiene
 """.strip()
 
-
 def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs):
     """
     Returns the system prompt message for the wild bee AI assistant.
