@@ -11,7 +11,12 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 from transformers import AutoModel, BitsAndBytesConfig
 
-class EMBPipeline(object):
+class EMBPipeline:
+    """
+    EMBPipeline is a class designed to handle embedding generation using a specified model. 
+    It provides methods for loading models, generating embeddings for single texts, batches, 
+    and unique texts, and integrating embeddings into pandas DataFrames.
+    """
     logger = logging.getLogger(__name__)
 
     @classmethod

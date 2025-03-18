@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_distances
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
 
-class Taxomizer(object):
+class Taxomizer:
 
     logger=logging.getLogger(__name__)
 
@@ -67,6 +67,8 @@ class Taxomizer(object):
             self.labh=labh(locals())
             chunks_df=self.labh.handle_object(locals(),'chunks_df', save_file=True, overwrite=False)
             llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
+            
+
         else:
             self._path = os.getcwd()
         

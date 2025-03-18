@@ -72,8 +72,6 @@ class LLMEvaluator(object):
         assert 'pred_completion' in pipe_df.columns, "pred_completion missing in pipe_df"
         pipe_df['eval_dict']=pipe_df.apply(lambda x: self.get_eval_dict(**x, **kwargs), axis=1)
 
-
-
     def __call__(self, llm_pipe:LLMPipeline=None, pipe_df:pd.DataFrame=None, **kwargs) -> pd.DataFrame:
 
         if pipe_df is None:

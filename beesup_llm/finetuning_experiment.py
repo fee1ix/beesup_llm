@@ -179,10 +179,13 @@ class CustomDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         return batch
 
 
-class FinetuningExperiment(object):
+class FinetuningExperiment:
     """
-    Performs supervised fine-tuning (SFT) of a LLM applying Low-Rank-Adaptation (LoRA).
+    This class is designed to perform supervised fine-tuning (SFT) of a large language model (LLM) 
+    using Low-Rank Adaptation (LoRA). It provides methods for configuring, training, and evaluating 
+    the model, as well as handling data preparation and LoRA-specific configurations.
     """
+
     logger=logging.getLogger(__name__)
 
     @classmethod
@@ -224,8 +227,7 @@ class FinetuningExperiment(object):
         #SUPERVISED FINE-TUNING TRAINER CONFIG
         self.sft_config=kwargs.get('sft_config',dict(
             num_train_epochs=kwargs.get('num_train_epochs',10),
-            # Use the provided 'output_dir' if available; otherwise, fall back to '_path' attribute if it exists.
-            # If '_path' is not set, default to the current directory ('.').
+            # Use the provided 'output_dir' if available; otherwise, fall back to '_path' (labhandler) attribute if it exists.
             output_dir=kwargs.get('output_dir', getattr(self, '_path', '.')),
             auto_find_batch_size=kwargs.get('auto_find_batch_size',True),
             per_device_train_batch_size=kwargs.get('per_device_train_batch_size',8),
@@ -255,7 +257,6 @@ class FinetuningExperiment(object):
             self.sft_config['output_dir']=getattr(self,'_path', self.sft_config['output_dir'])
 
 
-
         if isinstance(data_df, pd.DataFrame):
             self.data_df = data_df.copy(); del data_df
         
@@ -268,8 +269,7 @@ class FinetuningExperiment(object):
         
         if getattr(self, 'test_mode', False):
             self.sft_config['num_train_epochs']=2
-
-        
+      
     def load_data(self, **kwargs) -> None:
         self.logger.info(f"Loading data")
 

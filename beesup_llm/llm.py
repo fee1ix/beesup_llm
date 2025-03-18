@@ -340,6 +340,19 @@ class LLMPipeline(object):
         return self.call_on_single(pipe_input, **kwargs)
 
     def __call__(self, pipe_input, stream=False, use_chatformat=False, **kwargs):
+        """
+        Invokes the appropriate method based on the type of the input provided.
+        Parameters:
+            pipe_input (pd.DataFrame | pd.Series | dict | Any): The input data to process. 
+                - If a pandas DataFrame, the `call_on_dataframe` method is invoked.
+                - If a pandas Series or dictionary, the `call_on_sample` method is invoked.
+                - Otherwise, the `call_on_single` method is invoked.
+            stream (bool, optional): Determines whether the output should be streamed. Defaults to False.
+            use_chatformat (bool, optional): Specifies whether to use chat formatting for the output. Defaults to False.
+            **kwargs: Additional keyword arguments passed to the respective method.
+        Returns:
+            Any: The result of processing the input using the appropriate method.
+        """
 
         if isinstance(pipe_input, pd.DataFrame):
             return self.call_on_dataframe(pipe_input, **kwargs)
@@ -349,6 +362,7 @@ class LLMPipeline(object):
         
         else:
             return self.call_on_single(pipe_input, use_chatformat=use_chatformat, stream=stream, **kwargs)
+
 
 class LlamaPipeline(LLMPipeline):
 

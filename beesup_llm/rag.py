@@ -49,7 +49,20 @@ def get_ranking_plot(ranking_df: pd.DataFrame, limiters: list=[], query_txt: str
 # input: ranking_df .. texts sorted decreasingly by score + selection criteria
 # output: list of booleans, True if text should be included, False otherwise
 
-class RAGLimiter(object):
+class RAGLimiter:
+    """
+    A class to represent a limiter for a Retrieval-Augmented Generation (RAG) system.
+
+    Methods
+    -------
+    add_feature(chunks_df: pd.DataFrame, **kwargs):
+        A static method intended to add features to a DataFrame of chunks. 
+        Currently, this method is not implemented and returns nothing.
+
+    __init__():
+        Initializes an instance of the RAGLimiter class. 
+        Currently, the constructor does not perform any specific initialization.
+    """
 
     @staticmethod
     def add_feature(chunks_df: pd.DataFrame, **kwargs):
@@ -60,8 +73,20 @@ class RAGLimiter(object):
         pass
     
 class NumLimiter(RAGLimiter):
-    """
-    Selects the first n texts, reduces complexity for following operations
+    """    
+    Limits the number of texts selected for further processing.
+    It selects the first `n` texts based on the specified limit,
+    reducing the complexity of subsequent operations.
+
+    Attributes:
+        limit (int): The maximum number of texts to select. Defaults to 100.
+
+    Methods:
+        get_mask(ranking_df: pd.DataFrame) -> list:
+            Generates a boolean mask indicating which rows in the input 
+            DataFrame should be selected based on the specified limit. 
+            If the number of rows in the DataFrame is less than the limit, 
+            all rows are selected.        
     """
     def __init__(self, limit=100, **kwargs):
         super().__init__()
@@ -75,8 +100,21 @@ class NumLimiter(RAGLimiter):
         return [True]*self.limit + [False]*(len(ranking_df)-self.limit)
 
 class CharLimiter(RAGLimiter):
-    """
-    Selects texts until the cumulative number of characters reaches the limit
+    """ 
+    Selects text chunks until the cumulative number of characters reaches a specified limit.
+    Attributes:
+        limit (int): The maximum cumulative number of characters allowed. Defaults to 500.
+    Methods:
+        add_feature(chunks_df: pd.DataFrame, txt_key: str = 'text', **kwargs):
+            Adds a new column 'n_chars' to the given DataFrame, which contains the 
+            character count of each text chunk. If the column already exists, it is not modified.
+        get_mask(ranking_df: pd.DataFrame) -> list:
+            Computes a boolean mask for the input DataFrame, indicating which rows 
+            can be included without exceeding the character limit. The mask is based 
+            on the cumulative sum of the 'n_chars' column.
+    Raises:
+        AssertionError: If the 'n_chars' column is missing in the input DataFrame 
+        when calling the `get_mask` method.
     """
     def __init__(self, limit=500, **kwargs):
         super().__init__()
@@ -94,8 +132,19 @@ class CharLimiter(RAGLimiter):
 
 class TokenLimiter(RAGLimiter):
     """
-    Selects texts until the cumulative number of tokens reaches the limit
+    Limits the number of texts/chunks based on a cumulative token count.
+    Attributes:
+        limit (int): The maximum number of tokens allowed. Defaults to 500.
+    Methods:
+        add_feature(chunks_df: pd.DataFrame, txt_key: str = 'text', **kwargs):
+            Adds a 'n_tokens' column to the DataFrame, representing the number of tokens
+            in each text. Requires a tokenizer to be passed in kwargs.
+        get_mask(ranking_df: pd.DataFrame) -> list:
+            Generates a boolean mask indicating which rows in the DataFrame can be 
+            included without exceeding the token limit. Requires the 'n_tokens' column 
+            to be present in the DataFrame.
     """
+
     def __init__(self, limit=500, **kwargs):
         super().__init__()
         self.limit=limit
@@ -119,8 +168,22 @@ class TokenLimiter(RAGLimiter):
 from kneed import KneeLocator
 class KneeLimiter(RAGLimiter):
     """
-    Selects texts with scores above the knee score
+    Selects texts/chunks with scores above the knee score using the KneeLocator algorithm.
+
+    Attributes:
+        curve (str): The type of curve to analyze. Default is "convex".
+        direction (str): The direction of the curve. Default is "decreasing".
+
+    Methods:
+        __init__(curve="convex", direction="decreasing", **kwargs):
+            Initializes the KneeLimiter with the specified curve and direction.
+
+        get_mask(ranking_df: pd.DataFrame) -> list:
+            Computes a mask for selecting rows in the DataFrame where the score is 
+            greater than or equal to the knee score. The knee score is determined 
+            using the KneeLocator algorithm.
     """
+
     def __init__(self, curve="convex", direction="decreasing", **kwargs):
         super().__init__()
         self.curve=curve
@@ -137,7 +200,7 @@ class KneeLimiter(RAGLimiter):
         knee_score = ranking_df.iloc[knee_index]['score']
         return (ranking_df['score']>=knee_score).to_list()
 
-class RAGPipeline(object):
+class RAGPipeline:
     """
     RAGPipeline: Retrieve and Generate Pipeline
 
@@ -163,7 +226,7 @@ class RAGPipeline(object):
         labh: Labhandler, optional
             Labhandler instance for reference attachment.
         
-        kwarfs: dict, optional
+        kwargs: dict, optional
             Additional keyword arguments for pipeline configuration: txt_key, emb_key, query_txt_key, query_emb_key, chunk_instruction, query_instruction
     """
 
