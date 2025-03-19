@@ -299,7 +299,6 @@ def do_dist_flattening(tree, threshold_dist=None):
 
     while True:
         node=dist_sorted_nodes.pop(0)
-
         if node.dist >= threshold_dist: break
 
         for child in node.children:

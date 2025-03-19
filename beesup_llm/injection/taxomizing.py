@@ -81,8 +81,7 @@ class Taxomizer:
         if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe=self.fit_llm_pipe(llm_pipe, **kwargs)
             self.llm_pipe=llm_pipe
-        
-        #self.load_data()
+    
 
     def load_linkage_matrix(self, chunks_df:pd.DataFrame=None, **kwargs) -> None:
         if chunks_df is None: chunks_df=self.chunks_df
@@ -118,7 +117,7 @@ class Taxomizer:
         if self.dist_flattening_config['use_kneepoint']:
             dist_threshold, index = get_dist_kneepoint(bin_tree,  include_leaves=include_leaves, **kwargs)
         elif self.dist_flattening_config['use_std']:
-            dist_threshold = get_dist_std(bin_tree, std_factor=self.dist_flattening_config['std_factor'], include_leaves=include_leaves, **kwargs)
+            dist_threshold, index = get_dist_std(bin_tree, std_factor=self.dist_flattening_config['std_factor'], include_leaves=include_leaves, **kwargs)
         
         dist_tree=do_dist_flattening(bin_tree, threshold_dist=dist_threshold)
         self.tree_info['dist_threshold']=dist_threshold
@@ -138,7 +137,7 @@ class Taxomizer:
         if self.ddist_flattening_config['use_kneepoint']:
             ddist_threshold, index = get_ddist_kneepoint(dist_tree, include_leaves=include_leaves, **kwargs)
         elif self.ddist_flattening_config['use_std']:
-            ddist_threshold = get_ddist_std(dist_tree, std_factor=self.ddist_flattening_config['std_factor'], include_leaves=include_leaves, **kwargs)
+            ddist_threshold, index = get_ddist_std(dist_tree, std_factor=self.ddist_flattening_config['std_factor'], include_leaves=include_leaves, **kwargs)
 
         ddist_tree=do_ddist_flattening(dist_tree, threshold_ddist=ddist_threshold)
         self.tree_info['ddist_threshold']=ddist_threshold
@@ -216,38 +215,6 @@ class Taxomizer:
         self.llm_tree=llm_tree
         if hasattr(self,'save_attribute'): self.save_attribute('llm_tree')
         return
-
-    def load_data(self):
-
-        if os.path.exists(f"{self._path}/linkage_matrix.pkl"):
-            with open(f"{self._path}/linkage_matrix.pkl", "rb") as f:
-                self.linkage_matrix=pickle.load(f)
-
-        if os.path.exists(f"{self._path}/bin_tree.pkl"):
-            with open(f"{self._path}/bin_tree.pkl", "rb") as f:
-                self.bin_tree=pickle.load(f)
-        
-        if os.path.exists(f"{self._path}/dist_tree.pkl"):
-            with open(f"{self._path}/dist_tree.pkl", "rb") as f:
-                self.dist_tree=pickle.load(f)
-        
-        if os.path.exists(f"{self._path}/ddist_tree.pkl"):
-            with open(f"{self._path}/ddist_tree.pkl", "rb") as f:
-                self.ddist_tree=pickle.load(f)
-
-        if os.path.exists(f"{self._path}/emb_tree.pkl"):
-            with open(f"{self._path}/emb_tree.pkl", "rb") as f:
-                self.emb_tree=pickle.load(f)
-            self.logger.debug(f"Loaded emb_tree from {self._path}/emb_tree.pkl")
-
-        if os.path.exists(f"{self._path}/llm_tree.pkl"):
-            with open(f"{self._path}/llm_tree.pkl", "rb") as f:
-                self.llm_tree=pickle.load(f)
-            self.logger.debug(f"Loaded llm_tree from {self._path}/llm_tree.pkl")
-        
-        if os.path.exists(f"{self._path}/chunks_df.pkl"):
-            self.chunks_df=pd.read_pickle(f"{self._path}/chunks_df.pkl")
-            self.logger.debug(f"Loaded chunks_df from {self._path}/chunks_df.pkl")
 
     def process_until_ddist_tree(self, verbose=False, **kwargs) -> None:
 
