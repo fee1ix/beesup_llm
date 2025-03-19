@@ -65,18 +65,16 @@ class Taxomizer:
         # Storage Handling
         if labh is not None:
             self.labh=labh(locals())
-            chunks_df=self.labh.handle_object(locals(),'chunks_df', save_file=True, overwrite=False)
-            llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
+            chunks_df=self.labh.handle_parameter(locals(),'chunks_df', save_file=True, overwrite=False)
+            llm_pipe=self.labh.handle_parameter(locals(),'llm_pipe')
+            self.labh.handle_attributes(['linkage_matrix','bin_tree','dist_tree','ddist_tree','emb_tree','llm_tree'])
             
-
         else:
             self._path = os.getcwd()
         
-
         if not hasattr(self,'tree_info'):
             self.tree_info=dict()
 
-        
         if isinstance(chunks_df, pd.DataFrame):
             self.chunks_df = chunks_df.copy(); del chunks_df
 
@@ -84,32 +82,36 @@ class Taxomizer:
             llm_pipe=self.fit_llm_pipe(llm_pipe, **kwargs)
             self.llm_pipe=llm_pipe
         
-        self.load_data()
+        #self.load_data()
 
-    def load_linkage_matrix(self, chunks_df:pd.DataFrame, **kwargs) -> None:
+    def load_linkage_matrix(self, chunks_df:pd.DataFrame=None, **kwargs) -> None:
+        if chunks_df is None: chunks_df=self.chunks_df
 
         distance_matrix = cosine_distances(np.vstack(chunks_df[self.chunk_emb_key].values))
         distance_matrix = distance_matrix.astype(np.float64)
         distance_matrix = squareform(distance_matrix, checks=False)
         linkage_matrix=linkage(distance_matrix, **self.linkage_args)
 
-        with open(f"{self._path}/linkage_matrix.pkl", "wb") as f:
-            pickle.dump(linkage_matrix, f)
-        
         self.linkage_matrix=linkage_matrix
+        if hasattr(self,'save_attribute'): self.save_attribute('linkage_matrix')
+        if hasattr(self,'save_config'): self.save_config()
         return
     
-    def load_bin_tree(self, linkage_matrix: np.ndarray, chunks_df: pd.DataFrame, **kwargs) -> None:
-        bin_tree=linkage_to_btree(linkage_matrix, chunks_df)
-        self.tree_info['bin_tree']=get_tree_info_dict(bin_tree)
+    def load_bin_tree(self, linkage_matrix: np.ndarray=None, chunks_df: pd.DataFrame=None, **kwargs) -> None:
+        if linkage_matrix is None: linkage_matrix=self.linkage_matrix
+        if chunks_df is None: chunks_df=self.chunks_df
 
-        with open(f"{self._path}/bin_tree.pkl", "wb") as f:
-            pickle.dump(bin_tree, f)
-        
+        bin_tree=linkage_to_btree(linkage_matrix, chunks_df)
+
         self.bin_tree=bin_tree
+        if hasattr(self,'save_attribute'): self.save_attribute('bin_tree')
+
+        self.tree_info['bin_tree']=get_tree_info_dict(bin_tree)
+        if hasattr(self,'save_config'): self.save_config()
         return
 
-    def load_dist_tree(self, bin_tree: Node, **kwargs) -> None:
+    def load_dist_tree(self, bin_tree: Node=None, **kwargs) -> None:
+        if bin_tree is None: bin_tree=copy.deepcopy(self.bin_tree)
 
         # DIST FLATTENING
         include_leaves=self.dist_flattening_config['include_leaves']
@@ -121,15 +123,16 @@ class Taxomizer:
         dist_tree=do_dist_flattening(bin_tree, threshold_dist=dist_threshold)
         self.tree_info['dist_threshold']=dist_threshold
 
-        self.tree_info['dist_tree']=get_tree_info_dict(dist_tree)
-
-        with open(f"{self._path}/dist_tree.pkl", "wb") as f:
-            pickle.dump(dist_tree, f)
-    
         self.dist_tree=dist_tree
+        if hasattr(self,'save_attribute'): self.save_attribute('dist_tree')
+
+        self.tree_info['dist_tree']=get_tree_info_dict(dist_tree)
+        if hasattr(self,'save_config'): self.save_config()
         return 
 
-    def load_ddist_tree(self, dist_tree: Node, **kwargs) -> None:
+    def load_ddist_tree(self, dist_tree: Node=None, **kwargs) -> None:
+        if dist_tree is None: dist_tree=copy.deepcopy(self.dist_tree)
+
         add_ddist(dist_tree)
         include_leaves=self.ddist_flattening_config['include_leaves']
         if self.ddist_flattening_config['use_kneepoint']:
@@ -150,13 +153,16 @@ class Taxomizer:
                 else: node.__setattr__('is_chunk',False)
                 print(node.name, end=', ')
 
-        with open(f"{self._path}/ddist_tree.pkl", "wb") as f:
-            pickle.dump(ddist_tree, f)
-        
+
         self.ddist_tree=ddist_tree
+        if hasattr(self,'save_attribute'): self.save_attribute('ddist_tree')
+        if hasattr(self,'save_config'): self.save_config()
         return
     
-    def load_emb_tree(self, ddist_tree: Node, chunks_df: pd.DataFrame=None, verbose=False, **kwargs) -> None:
+    def load_emb_tree(self, ddist_tree: Node=None, chunks_df: pd.DataFrame=None, verbose=False, **kwargs) -> None:
+        if ddist_tree is None: ddist_tree=copy.deepcopy(self.ddist_tree)
+        if chunks_df is None: chunks_df=self.chunks_df
+
 
         propagate_emb_from_leaves(ddist_tree)
         emb_tree = add_order_idc(ddist_tree, chunks_df, verbose=verbose)
@@ -180,15 +186,17 @@ class Taxomizer:
             if len(intersection)>0:
                 self.logger.warning(f"Node {node.name} has overlapping include and exclude chunks: {intersection}")
 
-        with open(f"{self._path}/emb_tree.pkl", "wb") as f:
-            pickle.dump(emb_tree, f)
-        chunks_df.to_pickle(f"{self._path}/chunks_df.pkl")
-
         self.emb_tree=emb_tree
         self.chunks_df=chunks_df
+        if hasattr(self,'save_attribute'):
+            self.save_attribute('emb_tree')
+            self.save_attribute('chunks_df')
+        if hasattr(self,'save_config'): self.save_config()
         return 
 
-    def load_llm_tree(self, emb_tree:Node, chunks_df:pd.DataFrame, verbose=False, **kwargs):
+    def load_llm_tree(self, emb_tree:Node=None, chunks_df:pd.DataFrame=None, verbose=False, **kwargs):
+        if emb_tree is None: emb_tree=self.emb_tree
+        if chunks_df is None: chunks_df=self.chunks_df
 
         llm_tree=copy.deepcopy(reset_headers(emb_tree))
         self.llm_pipe.prepare_inference()
@@ -205,10 +213,8 @@ class Taxomizer:
 
             if verbose: print(f"{pre} [{node.name}] {node.header}")
 
-        with open(f"{self._path}/llm_tree.pkl", "wb") as f:
-            pickle.dump(llm_tree, f)
-        
         self.llm_tree=llm_tree
+        if hasattr(self,'save_attribute'): self.save_attribute('llm_tree')
         return
 
     def load_data(self):
@@ -245,10 +251,10 @@ class Taxomizer:
 
     def process_until_ddist_tree(self, verbose=False, **kwargs) -> None:
 
-        self.load_linkage_matrix(self.chunks_df, **kwargs)
-        self.load_bin_tree(self.linkage_matrix, self.chunks_df)
-        self.load_dist_tree(copy.deepcopy(self.bin_tree),**kwargs)
-        self.load_ddist_tree(copy.deepcopy(self.dist_tree), **kwargs)
+        if not hasattr(self, 'linkage_matrix'): self.load_linkage_matrix(self.chunks_df, **kwargs)
+        if not hasattr(self, 'bin_tree'): self.load_bin_tree(self.linkage_matrix, self.chunks_df)
+        if not hasattr(self, 'dist_tree'): self.load_dist_tree(copy.deepcopy(self.bin_tree),**kwargs)
+        if not hasattr(self, 'ddist_tree'): self.load_ddist_tree(copy.deepcopy(self.dist_tree), **kwargs)
 
         if hasattr(self, 'save_config'): self.save_config() # using labhandler to save config (tree_info)
 

@@ -1,15 +1,18 @@
 from beesup_llm import get_labhandler
 
 import torch
+
 import logging
 import numpy as np
 import pandas as pd
+
+from typing import List, Union
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from transformers import AutoModel, BitsAndBytesConfig
+from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
 
 class EMBPipeline:
     """
@@ -114,7 +117,6 @@ class EMBPipeline:
         embs=[txt_emb_dict[txt] for txt in texts]
         return embs
 
-
     def add_emb(self, pipe_df: pd.DataFrame, txt_key:str='text', emb_key:str='emb', **kwargs):
         assert txt_key in pipe_df.columns, f"Column '{txt_key}' not found in DataFrame"
 
@@ -147,3 +149,89 @@ class NVEmbedPipeline(EMBPipeline):
 
         self.name_or_path = getattr(self,'name_or_path', None) or 'nvidia/NV-Embed-v2' #https://huggingface.co/nvidia/NV-Embed-v2
 
+
+
+import torch.nn.functional as F
+from torch import Tensor
+def last_token_pool(last_hidden_states: Tensor,
+                 attention_mask: Tensor) -> Tensor:
+    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+    if left_padding:
+        return last_hidden_states[:, -1]
+    else:
+        sequence_lengths = attention_mask.sum(dim=1) - 1
+        batch_size = last_hidden_states.shape[0]
+        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+
+class QwenPipeline(EMBPipeline):
+
+    def __init__(self, ref=None, **kwargs):
+        super().__init__(ref, **kwargs)
+
+        self.name_or_path = getattr(self,'name_or_path', None) or 'Alibaba-NLP/gte-Qwen2-7B-instruct' #https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct
+
+    def load_tokenizer(self):
+        self.logger.info(f"Loading tokenizer {self.name_or_path}")
+        self.tokenizer=AutoTokenizer.from_pretrained(self.name_or_path, trust_remote_code=True)
+        return
+    
+    def get_tokenizer(self):
+
+        tokenizer=getattr(self, 'tokenizer', None)
+        if tokenizer is None:
+            self.load_tokenizer()
+            tokenizer=self.tokenizer
+            del self.tokenizer
+            return tokenizer
+        
+        else:
+            return self.tokenizer
+
+
+
+
+
+        self.model=AutoModel.from_pretrained(
+            self.name_or_path,
+            device_map='auto',
+            quantization_config=BitsAndBytesConfig(
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type='nf4',
+            ),
+            trust_remote_code=True
+        )
+        return
+    
+    def prepare(self):
+        super().prepare()
+        if not hasattr(self, 'tokenizer'): self.load_tokenizer()
+        return
+
+    def get_emb_batch(self, batch: List[str], instruction:str=None, **kwargs) -> np.ndarray:
+        instruction=instruction or getattr(self, 'instruction', None)
+        self.prepare()
+
+        batch=[f"{instruction}\n{txt}" for txt in batch if instruction is not None]
+
+        # Tokenize the input texts
+        batch_dict = self.tokenizer(batch, max_length=8192, padding=True, truncation=True, return_tensors='pt')
+        batch_dict = {k: v.to(self.model.device) for k, v in batch_dict.items()}
+        outputs = self.model(**batch_dict)
+        emb_batch = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+
+        # normalize embeddings
+        emb_batch = F.normalize(emb_batch, p=2, dim=1)
+        emb_batch=emb_batch.detach().cpu().numpy()
+        torch.cuda.empty_cache()
+        return emb_batch
+
+    def get_emb(self, text:str,**kwargs) -> np.ndarray:
+        emb=self.get_emb_batch([text], **kwargs)[0]
+        torch.cuda.empty_cache()
+        return emb
+
+
+
+    

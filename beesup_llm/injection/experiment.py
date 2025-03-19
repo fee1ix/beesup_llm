@@ -72,7 +72,7 @@ class InjectionExperiment(FinetuningExperiment):
             self.rag_pipe.add_limiter_features()
         
         self.toc=None #extract toc from injection data
-        if isinstance(self.data_df, pd.DataFrame):
+        if hasattr(self,'data_df') and isinstance(self.data_df, pd.DataFrame):
             if not self.data_df.empty:
                 if 'toc' in self.data_df.columns:
                     self.toc=self.data_df['toc'].iloc[0]

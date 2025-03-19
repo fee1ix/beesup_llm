@@ -640,6 +640,7 @@ dependencies:
       - watchfiles==0.21.0
       - websockets==11.0.3
       - werkzeug==3.0.3
+      - wikipedia==1.4.0
       - wrapt==1.16.0
       - yarg==0.1.9
 variables:

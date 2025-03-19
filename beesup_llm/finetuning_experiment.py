@@ -251,9 +251,14 @@ class FinetuningExperiment:
 
         if labh is not None:
             self.labh=labh(locals())
-            data_df=self.labh.handle_object(locals(),'data_df')
-            llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
-            evaluators=self.labh.handle_object(locals(),'evaluators')
+
+            data_df=self.labh.handle_parameter(locals(),'data_df')
+            llm_pipe=self.labh.handle_parameter(locals(),'llm_pipe')
+            evaluators=self.labh.handle_parameter(locals(),'evaluators')
+
+            # data_df=self.labh.handle_object(locals(),'data_df')
+            # llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
+            # evaluators=self.labh.handle_object(locals(),'evaluators')
             self.sft_config['output_dir']=getattr(self,'_path', self.sft_config['output_dir'])
 
 
