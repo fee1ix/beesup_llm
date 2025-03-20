@@ -74,7 +74,7 @@ def linkage_to_btree(linkage_matrix, chunks_df):
     root=nodes[len(linkage_matrix) + n_leaves - 1]
 
 
-    logging.info(get_tree_info_dict(root))
+    logging.debug(get_tree_info_dict(root))
 
     return root
 
@@ -188,25 +188,33 @@ def get_tree_density(tree): #A measure of how "full" the tree is compared to a p
     # Compute density
     return total_nodes / max_possible_nodes
 
-def get_tree_info_dict(tree, round_digits=2):
+def get_tree_info_dict(tree, round_digits=4):
     nodes=list(PreOrderIter(tree))
 
     tree_info_dict=dict(
-        num_nodes=tree.size,
-        height=tree.height,
-        num_root_children=len(tree.children),
+
+        num_inodes=[n.is_leaf for n in nodes].count(False),
         num_leaves=[n.is_leaf for n in nodes].count(True),
+
+        num_inodes_per_depth=[[(not n.is_leaf and n.depth==d) for n in tree.descendants].count(True) for d in range(1,tree.height+1)],
+        num_leaves_per_depth=[[(n.is_leaf and n.depth==d) for n in tree.descendants].count(True) for d in range(1,tree.height+1)],
+
+        height=tree.height,
+        avg_depth=get_average_depth(tree),
+        width=tree_width(tree),
+        dia=get_tree_diameter(tree),
+        
         branching=get_branching_factor(tree),
         avg_degree=get_average_degree(tree),
         avg_balance=get_average_balance(tree),
-        dia=get_tree_diameter(tree),
-        avg_depth=get_average_depth(tree),
-        width=tree_width(tree),
+        
         #density=get_tree_density(tree),
     )
 
     if round_digits is not None:
-        tree_info_dict={k: round(v, round_digits) for k,v in tree_info_dict.items()}
+        for k,v in tree_info_dict.items():
+            if isinstance(v, float):
+                tree_info_dict[k]=round(v, round_digits)
 
     return tree_info_dict
 
@@ -227,6 +235,7 @@ def log_tree_info(tree, prefix=None):
         outputs=prefix+outputs
 
     logging.info(outputs)
+    return
  
 
 
@@ -247,7 +256,7 @@ def get_dist_kneepoint(tree, include_leaves=True, plot=False, **kwargs):
     knee_index = KneeLocator(list(range(len(sorted_dists))), sorted_dists, curve="convex", direction="increasing").knee
     knee_dist = sorted_dists[knee_index]
 
-    logging.info(f'knee_dist: {knee_dist:.4f}, knee_index: {knee_index}/ {len(sorted_dists)}')
+    logging.debug(f'knee_dist: {knee_dist:.4f}, knee_index: {knee_index}/ {len(sorted_dists)}')
 
     if plot:
         plt.figure(figsize=(18, 5))
@@ -272,7 +281,7 @@ def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwargs
     threshold_dist=std_factor*sorted_dists.std()
     threshold_index=np.searchsorted(sorted_dists, threshold_dist, side="right")
 
-    logging.info(f'threshold_dist: {threshold_dist:.4f}, threshold_index: {threshold_index}/ {len(sorted_dists)}')
+    logging.debug(f'threshold_dist: {threshold_dist:.4f}, threshold_index: {threshold_index}/ {len(sorted_dists)}')
 
     if plot:
         plt.figure(figsize=(18, 5))
@@ -307,7 +316,7 @@ def do_dist_flattening(tree, threshold_dist=None):
         node.parent=None
         deleted_nodes.append(node.name)
     
-    logging.info(get_tree_info_dict(tree))
+    logging.debug(get_tree_info_dict(tree))
     return tree
 
 
@@ -322,7 +331,7 @@ def get_ddist_kneepoint(tree, include_leaves=True, plot=False, **kwargs):
     knee_index = KneeLocator(list(range(len(sorted_ddists))), sorted_ddists, curve="convex", direction="increasing").knee
     knee_ddist = sorted_ddists[knee_index]
 
-    logging.info(f'knee_ddist: {knee_ddist:.4f}, knee_index: {knee_index}/ {len(sorted_ddists)}')
+    logging.debug(f'knee_ddist: {knee_ddist:.4f}, knee_index: {knee_index}/ {len(sorted_ddists)}')
 
     if plot:
         plt.figure(figsize=(18, 5))
@@ -349,7 +358,7 @@ def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwarg
     threshold_ddist=std_factor*sorted_ddists.std()
     threshold_index=np.searchsorted(sorted_ddists, threshold_ddist, side="right")
 
-    logging.info(f'threshold_ddist: {threshold_ddist:.4f}, threshold_index: {threshold_index}/ {len(sorted_ddists)}')
+    logging.debug(f'threshold_ddist: {threshold_ddist:.4f}, threshold_index: {threshold_index}/ {len(sorted_ddists)}')
 
     if plot:
         plt.figure(figsize=(18, 5))
@@ -402,7 +411,7 @@ def do_ddist_flattening(tree, threshold_ddist=None):
         # if verbose:
         #     print(f"i={i} {len(deleted_nodes)}/{num_delete_nodes}\t"+25*" ",end='\r')
     
-    logging.info(get_tree_info_dict(tree))
+    logging.debug(get_tree_info_dict(tree))
     return tree
 
 def recover_leaf_parents(tree):
@@ -439,15 +448,16 @@ def recover_leaf_parents(tree):
         new_child_order=[new_parent_node]+old_child_order
         node.children=tuple(new_child_order)
 
-    logging.info(get_tree_info_dict(tree))
+    logging.debug(get_tree_info_dict(tree))
     return tree
 
 # ORDERING THE CHUNKS
 def ranking_order(df, start_idx=0, verbose=False):
+    
     return df.sort_values(by='score',ascending=False)
 
 from sklearn.metrics.pairwise import cosine_similarity
-def diverse_order(df, start_idx=0, verbose=False):
+def diverse_order(df, start_idx=0, verbose=False, verbose_prefix=''):
 
     embs=np.vstack(df['emb'].values)
 
@@ -470,7 +480,8 @@ def diverse_order(df, start_idx=0, verbose=False):
         match_mask[min_idx] = False
         idc_order.append(min_idx)
         if verbose:
-            print(f"{len(idc_order)}/{len(embs)}\tscore: {similarities[min_idx]}"+40*' ', end='\r')
+            verbose_txt=f"leaf node {len(idc_order)}/{len(embs)}"
+            print(f"{verbose_prefix}\t{verbose_txt}".ljust(100), end='\r')
     
     diverse_order.idc_order=idc_order
     
@@ -478,8 +489,17 @@ def diverse_order(df, start_idx=0, verbose=False):
     
     return df.iloc[idc_order]
 
+
 def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
 
+    if isinstance(order_fn, str):
+        order_fn=globals().get(order_fn, None)
+        if order_fn is None:
+            raise ValueError(f"order_fn {order_fn} not available in globals")
+
+
+    sub_kwargs=dict(verbose=verbose)
+ 
     chunk_embs=np.vstack(chunks_df['emb'].values)
     header_embs=np.vstack([n.emb for n in PreOrderIter(tree) if not n.is_leaf])
     match_matrix=cosine_similarity(header_embs,chunk_embs)
@@ -493,7 +513,9 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
 
         if node.is_root: continue
         if verbose:
-            print(f"{i+1}/{header_embs.shape[0]}"+40*" ")
+            verbose_txt=f"head node {i+1}/{header_embs.shape[0]}"
+            print(f"{verbose_txt}", end='\r')
+            sub_kwargs['verbose_prefix']=verbose_txt
         
 
         include_chunk_mask=np.zeros(len(chunks_df), dtype=bool)
@@ -508,17 +530,19 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
 
         include_chunks_df=ranking_df[include_chunk_mask].copy()
 
-        include_chunks_df=order_fn(include_chunks_df, start_idx=include_chunks_df.score.argmax(), verbose=verbose)
+        include_chunks_df=order_fn(include_chunks_df, start_idx=include_chunks_df.score.argmax(), **sub_kwargs)
 
         node.include_chunk_idc=include_chunks_df.index.to_list()
 
         if node.siblings:
             exclude_chunks_df=ranking_df[exclude_chunk_mask].copy()
 
-            exclude_chunks_df=order_fn(exclude_chunks_df, start_idx=exclude_chunks_df.score.argmax(), verbose=verbose)
+            exclude_chunks_df=order_fn(exclude_chunks_df, start_idx=exclude_chunks_df.score.argmax(), **sub_kwargs)
             node.exclude_chunk_idc=exclude_chunks_df.index.to_list()
 
         i+=1
+    
+    if verbose: print()
     
     return tree
 
@@ -559,6 +583,7 @@ def get_chunk_text(chunk_row):
     chunk_text=re.sub(r'\n+', '; ', chunk_text)
 
     return chunk_text
+
 
 def get_header_prompt(node, tree, chunks_df):
     

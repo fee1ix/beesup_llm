@@ -5,7 +5,6 @@ import logging
 import pandas as pd
 from typing import Union
 
-
 class LLMEvaluator(object):
     logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 from beesup_llm import get_labhandler
 
 import torch
-
 import logging
 import numpy as np
 import pandas as pd
@@ -83,11 +82,11 @@ class EMBPipeline:
 
         return emb
     
-    def get_emb_batch(self, batch: list, instruction:str=None, **kwargs) -> np.ndarray:
+    def get_emb_batch(self, txt_batch: list, instruction:str=None, **kwargs) -> np.ndarray:
         instruction=instruction or getattr(self, 'instruction', None)
         self.prepare()
 
-        emb_batch = self.model.encode(batch, instruction=instruction)
+        emb_batch = self.model.encode(txt_batch, instruction=instruction)
         emb_batch = [emb.cpu().numpy() for emb in emb_batch] # convert to numpy array/ move to cpu
         torch.cuda.empty_cache()
 
@@ -150,7 +149,6 @@ class NVEmbedPipeline(EMBPipeline):
         self.name_or_path = getattr(self,'name_or_path', None) or 'nvidia/NV-Embed-v2' #https://huggingface.co/nvidia/NV-Embed-v2
 
 
-
 import torch.nn.functional as F
 from torch import Tensor
 def last_token_pool(last_hidden_states: Tensor,
@@ -209,14 +207,14 @@ class QwenPipeline(EMBPipeline):
         if not hasattr(self, 'tokenizer'): self.load_tokenizer()
         return
 
-    def get_emb_batch(self, batch: List[str], instruction:str=None, **kwargs) -> np.ndarray:
+    def get_emb_batch(self, txt_batch: List[str], instruction:str=None, **kwargs) -> np.ndarray:
         instruction=instruction or getattr(self, 'instruction', None)
         self.prepare()
 
-        batch=[f"{instruction}\n{txt}" for txt in batch if instruction is not None]
+        txt_batch=[f"{instruction}\n{txt}" for txt in txt_batch if instruction is not None]
 
         # Tokenize the input texts
-        batch_dict = self.tokenizer(batch, max_length=8192, padding=True, truncation=True, return_tensors='pt')
+        batch_dict = self.tokenizer(txt_batch, max_length=8192, padding=True, truncation=True, return_tensors='pt')
         batch_dict = {k: v.to(self.model.device) for k, v in batch_dict.items()}
         outputs = self.model(**batch_dict)
         emb_batch = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
@@ -227,9 +225,8 @@ class QwenPipeline(EMBPipeline):
         torch.cuda.empty_cache()
         return emb_batch
 
-    def get_emb(self, text:str,**kwargs) -> np.ndarray:
+    def get_emb(self, text:str, **kwargs) -> np.ndarray:
         emb=self.get_emb_batch([text], **kwargs)[0]
-        torch.cuda.empty_cache()
         return emb
 
 
