@@ -1,7 +1,7 @@
 import re
 import copy
 import logging
-
+from typing import Union, List, Dict, Any
 import numpy as np
 import pandas as pd
 
@@ -297,7 +297,6 @@ def get_dist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwargs
     return float(threshold_dist), threshold_index
 
 def get_dist_sorted_nodes(tree):
-    #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
     return sorted((n for n in PreOrderIter(tree) if not n.is_leaf), key=lambda node: getattr(node, 'dist', np.inf))
 
 def do_dist_flattening(tree, threshold_dist=None):
@@ -374,13 +373,12 @@ def get_ddist_std(tree, std_factor=1.0, include_leaves=True, plot=False, **kwarg
     return float(threshold_ddist), threshold_index
 
 def get_ddist_sorted_nodes(tree):
-    #return sorted(PreOrderIter(btree), key=lambda node: getattr(node, 'dist', np.inf))
     return sorted((n for n in PreOrderIter(tree) if not n.is_chunk), key=lambda node: getattr(node, 'ddist', np.inf))
 
 def do_ddist_flattening(tree, threshold_ddist=None):
     tree=copy.deepcopy(tree)
-    add_ddist(tree)
-    ddist_sorted_nodes= get_ddist_sorted_nodes(tree)
+    #add_ddist(tree)
+    ddist_sorted_nodes = get_ddist_sorted_nodes(tree)
 
     deleted_nodes=[]
     affected_nodes=[]
@@ -389,6 +387,7 @@ def do_ddist_flattening(tree, threshold_ddist=None):
     while True:
         node=ddist_sorted_nodes.pop(0)
 
+        if node.is_root: break
         if node.ddist >= threshold_ddist: break
   
         children=[child for child in node.children]
@@ -452,8 +451,8 @@ def recover_leaf_parents(tree):
     return tree
 
 # ORDERING THE CHUNKS
+
 def ranking_order(df, start_idx=0, verbose=False):
-    
     return df.sort_values(by='score',ascending=False)
 
 from sklearn.metrics.pairwise import cosine_similarity
@@ -488,7 +487,6 @@ def diverse_order(df, start_idx=0, verbose=False, verbose_prefix=''):
     idc_order=[idc_order[0]]+idc_order[1:][::-1]
     
     return df.iloc[idc_order]
-
 
 def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
 
@@ -547,6 +545,67 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
     return tree
 
 
+from anytree import LevelOrderIter
+from itertools import cycle
+
+def get_round_robin_shuffle(*lists):
+    # Filter out empty lists and cycle through iterators
+    iterators = [iter(lst) for lst in lists if lst]
+    result = []
+    while iterators:
+        next_iterators = []
+        for it in iterators:
+            try:
+                item = next(it)
+                result.append(item)
+                next_iterators.append(it)
+            except StopIteration:
+                # iterator exhausted, do not add back
+                pass
+        iterators = next_iterators
+    return result
+
+def get_level_order_idc(nodes:Union[Node,List[Node]], bin_tree:Node) -> List[int]:
+
+    if not isinstance(nodes, list): nodes=[nodes]
+
+    idc_lists=[list() for _ in range(len(nodes))]
+    for i,i_node in enumerate(nodes):
+        for j, j_node in enumerate(LevelOrderIter(i_node)):
+            if j_node.is_leaf: continue
+            if all([n.is_chunk for n in j_node.children]):
+                idc_lists[i].append([n.kidx for n in j_node.children if n.is_chunk])
+                #bin_node=get_node(j_node.name, bin_tree)
+                #idc_lists[i].append([n.kidx for n in LevelOrderIter(j_node) if n.is_chunk])
+    
+    idc_lists=get_round_robin_shuffle(*idc_lists)
+    idc=get_round_robin_shuffle(*idc_lists)
+
+    return idc
+
+def add_level_order_idc(tree:Node, bin_tree:Node, chunks_df:pd.DataFrame, verbose=False) -> None:
+
+    #cidx2kidx=dict(zip(chunks_df.index, chunks_df.kidx))
+    kidx2cidx=dict(zip(chunks_df.kidx, chunks_df.index))
+    i,num_nodes=0,len([node for node in PreOrderIter(tree) if (not node.is_leaf) or (node.is_root)])
+
+    for node in PreOrderIter(tree):
+        if node.is_leaf: continue
+        node.__setattr__("include_chunk_idc",[])
+        node.__setattr__("exclude_chunk_idc",[])
+        if node.is_root: continue
+
+        if verbose:
+            print(f"{i+1}/{num_nodes}".ljust(20), end='\r')
+
+        node.include_chunk_idc=[kidx2cidx[idx] for idx in get_level_order_idc(node, bin_tree)]
+        node.exclude_chunk_idc=[kidx2cidx[idx] for idx in get_level_order_idc(list(node.siblings), bin_tree)]
+        i+=1
+
+    return tree
+
+
+
 # GENERATE HEADERS UTILITY
 def reset_headers(tree):
     for node in PreOrderIter(tree):
@@ -575,17 +634,14 @@ def get_headerpath_until(the_node, tree):
     
     return headerpath
 
-def get_chunk_text(chunk_row):
-    #chunk_template="{subject}\t{predicate}\t{object}"
-    chunk_template="{p}: {o}"
 
-    chunk_text=chunk_template.format(**chunk_row)
-    chunk_text=re.sub(r'\n+', '; ', chunk_text)
-
-    return chunk_text
+def get_chunk_txt(chunk_row: Union[dict, pd.Series], chunk_template:str="{p}: {o}") -> str:
+    chunk_txt=chunk_template.format(**chunk_row)
+    chunk_txt=re.sub(r'\n+', '; ', chunk_txt)
+    return chunk_txt
 
 
-def get_header_prompt(node, tree, chunks_df):
+def get_header_prompt(node: Node, tree: Node, chunks_df: pd.DataFrame) -> str:
     
     headerpath=" > ".join(get_headerpath_until(node, tree))+" > here"
 
@@ -596,6 +652,7 @@ Actually we are inside a section belonging to table of contents. Our header path
 Your task now is to make up a concise meaningful header for the section we are currently in.
 """.strip()
     prompt+="\n\n"
+
     prompt+=f"""
 GIVEN:
 - samples of content that is explicitly included in the section we are currently in
@@ -610,28 +667,17 @@ TASK:
     
     prompt+=f"\n\n\nINCLUDED CHUNKS (focus of the current section):\n"
     included_chunks_df=chunks_df.loc[node.include_chunk_idc].copy()
-    included_chunks_df['chunk_text']=included_chunks_df.apply(get_chunk_text, axis=1)
-    included_chunks_df=included_chunks_df.drop_duplicates(subset='chunk_text')
-
-    chars, max_chars =0, 10000
-    for i,chunk_row in included_chunks_df.iterrows():
-        line=chunk_row.chunk_text+' | '
-        prompt+=line
-        chars+=len(line)
-        if chars>max_chars: break
-
+    included_chunks_df=included_chunks_df.drop_duplicates(subset='txt')
+    included_chunks_df['n_tokens_cumsum']=included_chunks_df['n_tokens'].cumsum()
+    included_chunks_df=included_chunks_df[included_chunks_df['n_tokens_cumsum']<=800]
+    prompt+=' | '.join(included_chunks_df['txt'].values)
 
     prompt+=f"\n\n\nEXCLUDED CHUNKS (sibling sections to distinguish scope):\n"
     excluded_chunks_df=chunks_df.loc[node.exclude_chunk_idc].copy()
-    excluded_chunks_df['chunk_text']=excluded_chunks_df.apply(get_chunk_text, axis=1)
-    excluded_chunks_df=excluded_chunks_df.drop_duplicates(subset='chunk_text')
-
-    chars, max_chars= 0, 10000
-    for i,chunk_row in excluded_chunks_df.iterrows():
-        line=chunk_row.chunk_text+' | '
-        prompt+=line
-        chars+=len(line)
-        if chars>max_chars: break
+    excluded_chunks_df=excluded_chunks_df.drop_duplicates(subset='txt')
+    excluded_chunks_df['n_tokens_cumsum']=excluded_chunks_df['n_tokens'].cumsum()
+    excluded_chunks_df=excluded_chunks_df[excluded_chunks_df['n_tokens_cumsum']<=800]
+    prompt+=' | '.join(excluded_chunks_df['txt'].values)
 
     # prompt+="\n\nCONTEXT:\n"
     # md_headers=mardownify_headerpath(get_headerpath_until(node, tree))

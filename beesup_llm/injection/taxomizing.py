@@ -2,9 +2,12 @@ import os
 import pickle
 import pandas as pd
 
+from typing import List, Dict, Any, Union, Tuple
+
 from beesup_llm import get_labhandler, _isinstance
 from beesup_llm.injection.taxomizing_utils import *
 from beesup_llm.llm import LLMPipeline
+from beesup_llm.rag import RAGLimiter, TokenLimiter
 
 
 from sklearn.metrics.pairwise import cosine_distances
@@ -24,15 +27,17 @@ class Taxomizer:
     
     def __init__(
             self,
-            ref=None,
-            label:str=None,
-            chunks_df=None,
-            llm_pipe=None,
+            ref: Any = None,
+            label:str = None,
+            chunks_df: pd.DataFrame = None,
+            llm_pipe: LLMPipeline = None,
+            limiters: List[RAGLimiter] = [],
             labh=get_labhandler(),
             **kwargs):
 
         self.label = label
-        self.chunk_txt_key = kwargs.get('txt_key', 'spo')
+        self.chunk_txt_template = kwargs.get('chunk_txt_template', "{p}: {o}")
+        self.chunk_txt_key = kwargs.get('txt_key', 'txt')
         self.chunk_emb_key = kwargs.get('emb_key', 'emb')
 
         # LINKAGE CONFIG
@@ -63,7 +68,7 @@ class Taxomizer:
         if self.ddist_flattening_config['use_kneepoint'] and self.ddist_flattening_config['use_std']:
             raise ValueError(f"Cannot use both kneepoint and std for ddist_flattening_config")
 
-        self.order_fn=kwargs.get('order_fn','diverse_order') #ranking_order
+        #self.order_fn=kwargs.get('order_fn','diverse_order') #ranking_order
 
         # Storage Handling
         if labh is not None:
@@ -80,10 +85,37 @@ class Taxomizer:
 
         if isinstance(chunks_df, pd.DataFrame):
             self.chunks_df = chunks_df.copy(); del chunks_df
-
+            if self.chunk_txt_key not in self.chunks_df.columns:
+                self.chunks_df[self.chunk_txt_key]=self.chunks_df.apply(lambda x: get_chunk_txt(x), axis=1)
+ 
         if _isinstance(llm_pipe, LLMPipeline):
             llm_pipe=self.fit_llm_pipe(llm_pipe, **kwargs)
             self.llm_pipe=llm_pipe
+            tokenizer=self.llm_pipe.get_tokenizer()
+            self.chunks_df['n_tokens']=self.chunks_df.apply(lambda x: len(tokenizer(x[self.chunk_txt_key])['input_ids']), axis=1)
+        
+        if isinstance(limiters, list) and all([_isinstance(l, RAGLimiter) for l in limiters]):
+            self.limiters=limiters
+            self.add_limiter_features()
+
+
+    def add_chunk_txt(self) -> None:
+        self.chunks_df['txt']=self.chunks_df.apply(lambda x: get_chunk_txt(x,self.chunk_txt_template), axis=1)
+        return
+        
+    def add_limiter_features(self) -> None:
+
+        if not hasattr(self,'llm_pipe'): return
+        if not hasattr(self,'limiters'): return
+
+        if not _isinstance(self.llm_pipe, LLMPipeline): return
+        if not all(_isinstance(l, RAGLimiter) for l in self.limiters): return
+
+        tokenizer=self.llm_pipe.get_tokenizer()
+        for selector in self.limiters:
+            selector.add_feature(self.chunks_df, txt_key=self.chunk_txt_key, tokenizer=tokenizer)
+        return
+        
     
     def load_linkage_matrix(self, chunks_df:pd.DataFrame=None, **kwargs) -> None:
         if chunks_df is None: chunks_df=self.chunks_df
@@ -107,8 +139,8 @@ class Taxomizer:
         self.bin_tree=bin_tree
         if hasattr(self,'save_attribute'): self.save_attribute('bin_tree')
 
-        #self.tree_info['bin_tree']=get_tree_info_dict(bin_tree)
-        #if hasattr(self,'save_config'): self.save_config()
+        self.tree_info['bin_tree']=get_tree_info_dict(bin_tree)
+        if hasattr(self,'save_config'): self.save_config()
         return
 
     def load_dist_tree(self, bin_tree: Node=None, **kwargs) -> None:
@@ -127,8 +159,8 @@ class Taxomizer:
         self.dist_tree=dist_tree
         if hasattr(self,'save_attribute'): self.save_attribute('dist_tree')
 
-        #self.tree_info['dist_tree']=get_tree_info_dict(dist_tree)
-        #if hasattr(self,'save_config'): self.save_config()
+        self.tree_info['dist_tree']=get_tree_info_dict(dist_tree)
+        if hasattr(self,'save_config'): self.save_config()
         return 
 
     def load_ddist_tree(self, dist_tree: Node=None, **kwargs) -> None:
@@ -140,10 +172,11 @@ class Taxomizer:
             ddist_threshold, index = get_ddist_kneepoint(dist_tree, include_leaves=include_leaves, **kwargs)
         elif self.ddist_flattening_config['use_std']:
             ddist_threshold, index = get_ddist_std(dist_tree, std_factor=self.ddist_flattening_config['std_factor'], include_leaves=include_leaves, **kwargs)
+        
+        self.tree_info['ddist_threshold']=ddist_threshold
 
         ddist_tree=do_ddist_flattening(dist_tree, threshold_ddist=ddist_threshold)
-        self.tree_info['ddist_threshold']=ddist_threshold
-        #self.tree_info['ddist_tree_raw']=get_tree_info_dict(ddist_tree)
+        self.tree_info['ddist_tree_raw']=get_tree_info_dict(ddist_tree)
 
         ddist_tree=recover_leaf_parents(ddist_tree)
         self.tree_info['ddist_tree_rec']=get_tree_info_dict(ddist_tree)
@@ -165,7 +198,9 @@ class Taxomizer:
         if chunks_df is None: chunks_df=self.chunks_df
 
         propagate_emb_from_leaves(ddist_tree)
-        emb_tree = add_order_idc(ddist_tree, chunks_df, order_fn=self.order_fn, verbose=verbose)
+
+        emb_tree = add_level_order_idc(ddist_tree, self.bin_tree, chunks_df, verbose=verbose)
+        #emb_tree = add_order_idc(ddist_tree, chunks_df, order_fn=self.order_fn, verbose=verbose)
 
         # CHECK if all chunks are included in the tree
         chunks_df['node_id']=None
@@ -175,7 +210,9 @@ class Taxomizer:
                 chunks_df.loc[node.include_chunk_idc,'node_id']=node.name
         
         if len(chunks_df[chunks_df['node_id'].isna()])!=0:
-            self.logger.warning(f"not all chunks included in the tree: {chunks_df[chunks_df['node_id'].isna()]}")
+            self.logger.warning(f"not all chunks included in the tree:")
+            from IPython.display import display
+            display(chunks_df[chunks_df['node_id'].isna()])
 
 
         # TEST IF EXCLUDE and INCLUDE CHUNKS ARE DISJOINT
@@ -209,10 +246,15 @@ class Taxomizer:
         for pre, fill, node in RenderTree(llm_tree):
             if node.is_leaf: continue
             if node.is_root: continue
+
             prompt=get_header_prompt(node, llm_tree, chunks_df)
-            header=self.llm_pipe(prompt,use_chatformat=True)
+
+
+            header=self.llm_pipe(prompt, use_chatformat=True)
+
             header=clean_header(header)
             node.__setattr__('header',header)
+            node.__setattr__('header_prompt',prompt)
 
             if verbose: print(f"{pre} [{node.name}] {node.header}")
 

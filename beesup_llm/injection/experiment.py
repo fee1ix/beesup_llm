@@ -35,6 +35,10 @@ class InjectionCallback(EvaluatorCallback):
             pipe_df=pipe_df.iloc[:4].copy()
 
         if hasattr(self,'rag_pipe'):
+            if 'mmluidx' in pipe_df.columns:
+                self.logger.info(f"{self.state_tag} Skip, because MMLU Evaluator does not support RAG")
+                return
+
             kwargs.update({k: getattr(self.rag_pipe, k, None) for k in ['chunk_txt_key', 'query_txt_key']})
             self.rag_pipe.add_ranking_df(pipe_df)
             self.rag_pipe.add_briefing_df(pipe_df)
