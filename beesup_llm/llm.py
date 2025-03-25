@@ -19,30 +19,30 @@ from transformers import \
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 
-def prepare_sample_for_chat_completion(the_input: Union[pd.Series, dict, list], tokenizer: AutoTokenizer, **kwargs) -> dict:
+def prepare_sample_for_chat_completion(sample: Union[pd.Series, dict, list], tokenizer: AutoTokenizer, **kwargs) -> dict:
 
-    if isinstance(the_input, pd.Series):
-        the_input=the_input.to_dict()
+    if isinstance(sample, pd.Series):
+        sample=sample.to_dict()
 
-    if isinstance(the_input, list): #assume that chat messages are given
-        prompt_messages=the_input
+    if isinstance(sample, list): #assume that chat messages are given
+        prompt_messages=sample
     
-    elif isinstance(the_input, dict):
+    elif isinstance(sample, dict):
         
-        if all(k in the_input for k in ['prompt_messages']):
-            prompt_messages=the_input['prompt_messages']
+        if all(k in sample for k in ['prompt_messages']):
+            prompt_messages=sample['prompt_messages']
 
     return tokenizer.apply_chat_template(prompt_messages,return_dict=True)
 
-def prepare_sample_for_chat_finetuning(the_input: Union[pd.Series, dict], tokenizer: AutoTokenizer, use_as_id:str=None, **kwargs) -> dict:
+def prepare_sample_for_chat_finetuning(sample: Union[pd.Series, dict], tokenizer: AutoTokenizer, sample_id_key:str=None, **kwargs) -> dict:
+    sample_name=getattr(sample, 'name', 0)
+    if isinstance(sample, pd.Series):
+        sample=sample.to_dict()
 
-    if isinstance(the_input, pd.Series):
-        the_input=the_input.to_dict()
-
-    if all(k in the_input for k in ['prompt_messages','gold_message']):
+    if all(k in sample for k in ['prompt_messages','gold_message']):
                 
-        prompt_messages=the_input.get('prompt_messages')
-        gold_message=the_input.get('gold_message')
+        prompt_messages=sample.get('prompt_messages')
+        gold_message=sample.get('gold_message')
     
     if gold_message[0]['role']!='assistant': warnings.warn('The gold message should be an assistant message')
     if prompt_messages[-1]['role']!='user': warnings.warn('The last prompt message should be a user message')
@@ -58,10 +58,8 @@ def prepare_sample_for_chat_finetuning(the_input: Union[pd.Series, dict], tokeni
     inputs=tokenizer.apply_chat_template(all_messages,return_dict=True)
 
     inputs['labels']=prompt_len*[-100]+input_ids[prompt_len:]
-
-    if (use_as_id is not None) and (use_as_id in the_input):
-        inputs['sample_id']=the_input.get(use_as_id)
-        
+    inputs['sample_id']=sample.get(sample_id_key, sample_name)
+   
     return inputs
 
 

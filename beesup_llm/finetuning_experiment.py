@@ -52,11 +52,16 @@ class ExperimentCallback(TrainerCallback):
         self.class_tag=camel_to_snake(self.__class__.__name__)
         self.object_tag=str()
 
-    def save_df(self, df: pd.DataFrame, state: TrainerState) -> None:
-        self.state_tag=get_state_tag(state)
+    def save_df(self, df: pd.DataFrame, state: TrainerState=None) -> None:
 
+        if state is None:
+            state_tag=''
+        else:
+            state_tag=get_state_tag(state)
+            self.state_tag=get_state_tag(state)
+            
         file_path=f"{self.output_dir}/"
-        file_name='_'.join([s for s in [self.state_tag, self.object_tag, self.class_tag, 'df.pkl'] if s])
+        file_name='_'.join([s for s in [state_tag, self.object_tag, self.class_tag, 'df.pkl'] if s])
         file_path+=file_name
 
         df.to_pickle(file_path)
@@ -102,9 +107,8 @@ class HistoryCallback(ExperimentCallback):
         super().on_epoch_end(args, state, control, **kwargs)
 
         callback_df=pd.DataFrame(state.log_history)
-        self.save_df(callback_df, state)
+        self.save_df(callback_df)
         return
-
 
 class CustomSFTTrainer(SFTTrainer):
     """Custom SFTTrainer that stores per-sample losses during training. Required when using a MCECallback."""
@@ -210,7 +214,6 @@ class FinetuningExperiment:
         self.do_eval_base_model=kwargs.get('do_eval_base_model',True)
         self.do_eval_lora_model=kwargs.get('do_eval_lora_model',True)
         self.do_train=kwargs.get('do_train',True)
-
         self.test_mode=kwargs.get('test_mode', False)
     
         #LORA CONFIG
@@ -245,20 +248,18 @@ class FinetuningExperiment:
             report_to=kwargs.get('report_to','none'),
             max_seq_length=kwargs.get('max_seq_length',4096),
             packing=kwargs.get('packing',False),
+            prediction_loss_only=False, #must be False for MCECallback to work
+            remove_unused_columns=False, #must be False for MCECallback to work, otherwise loss can't be mapped to samples
             seed=kwargs.get('seed',42)
         ))
 
 
         if labh is not None:
-            self.labh=labh(locals())
-
+            self.labh=labh(locals()) #initialize labhandler
             data_df=self.labh.handle_parameter(locals(),'data_df')
             llm_pipe=self.labh.handle_parameter(locals(),'llm_pipe')
             evaluators=self.labh.handle_parameter(locals(),'evaluators')
 
-            # data_df=self.labh.handle_object(locals(),'data_df')
-            # llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
-            # evaluators=self.labh.handle_object(locals(),'evaluators')
             self.sft_config['output_dir']=getattr(self,'_path', self.sft_config['output_dir'])
 
 
@@ -285,8 +286,11 @@ class FinetuningExperiment:
         train_df=self.data_df[self.data_df['split']=='train'].reset_index(drop=True).copy()
         eval_df=self.data_df[self.data_df['split']=='eval'].reset_index(drop=True).copy()
 
-        self.train_ds, self.eval_ds = None, None
+        if getattr(self, 'test_mode', False):
+            train_df=train_df.head(3)
+            eval_df=eval_df.head(3)
 
+        self.train_ds, self.eval_ds = None, None
         if not train_df.empty:
             self.llm_pipe.load_tokenizer('training')
             self.train_ds=Dataset.from_list(train_df.apply(lambda x: prepare_sample_for_chat_finetuning(x, self.llm_pipe.get_tokenizer('training'),**kwargs), axis=1).to_list())

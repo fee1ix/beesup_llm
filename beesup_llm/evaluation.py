@@ -26,8 +26,8 @@ class LLMEvaluator(object):
 
         if labh is not None:
             self.labh=labh(locals())
-            eval_df=self.labh.handle_object(locals(),'eval_df', save_file=True, overwrite=False)
-            llm_pipe=self.labh.handle_object(locals(),'llm_pipe')
+            eval_df=self.labh.handle_parameter(locals(),'eval_df', save_file=True, overwrite=False)
+            llm_pipe=self.labh.handle_parameter(locals(),'llm_pipe')
 
         if isinstance(eval_df, pd.DataFrame):
             self.eval_df = eval_df.copy(); del eval_df

@@ -68,7 +68,7 @@ class InjectionExperiment(FinetuningExperiment):
         super().__init__(*args, **kwargs)
 
         if hasattr(self, 'labh'):
-            rag_pipe=self.labh.handle_object(locals(),'rag_pipe')
+            rag_pipe=self.labh.handle_parameter(locals(),'rag_pipe')
 
         if _isinstance(rag_pipe, RAGPipeline):
             self.rag_pipe=rag_pipe
@@ -81,8 +81,10 @@ class InjectionExperiment(FinetuningExperiment):
                 if 'toc' in self.data_df.columns:
                     self.toc=self.data_df['toc'].iloc[0]
     
+
     def run(self, **kwargs) -> None:
 
+        kwargs.update(dict(use_as_id='kidx')) #passed to load_data --> prepare_sample_for_chat_finetuning (necessary for MCE Callback)
         self.run_entry(**kwargs)
 
         if self.do_eval_base_model_rag:
