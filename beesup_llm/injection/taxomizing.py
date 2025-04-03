@@ -43,6 +43,7 @@ class Taxomizer:
         # LINKAGE CONFIG
         self.linkage_args=kwargs.get('linkage_args', dict(
             method=kwargs.get('method','ward'), #single #complete #average #weighted #centroid #median #ward
+            metric=kwargs.get('metric',None), #euclidean #cityblock #cosine #correlation #hamming #jaccard
             optimal_ordering=False
         ))
         
