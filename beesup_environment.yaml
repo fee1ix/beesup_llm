@@ -643,7 +643,5 @@ dependencies:
       - wikipedia==1.4.0
       - wrapt==1.16.0
       - yarg==0.1.9
-variables:
-  OPENAI_API_KEY: 
-    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
+
 prefix: /home/fboehning/.conda/envs/beesup

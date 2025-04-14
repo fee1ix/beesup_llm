@@ -302,7 +302,7 @@ def get_dist_sorted_nodes(tree):
 def do_dist_flattening(tree, threshold_dist=None):
 
     tree=copy.deepcopy(tree)
-    dist_sorted_nodes= get_dist_sorted_nodes(tree)
+    dist_sorted_nodes = get_dist_sorted_nodes(tree)
     deleted_nodes=[]
 
     while True:
@@ -434,7 +434,6 @@ def recover_leaf_parents(tree):
         new_parent_node_id=free_ids.pop()
         new_parent_node=Node(new_parent_node_id)
 
-        #new_dist=np.mean([child.dist for child in node.children if not child.is_leaf])
         new_parent_node.__setattr__('dist',node.dist)
 
         new_ids.append(new_parent_node_id)
@@ -451,7 +450,6 @@ def recover_leaf_parents(tree):
     return tree
 
 # ORDERING THE CHUNKS
-
 def ranking_order(df, start_idx=0, verbose=False):
     return df.sort_values(by='score',ascending=False)
 
@@ -544,7 +542,6 @@ def add_order_idc(tree, chunks_df, order_fn=diverse_order, verbose=False):
     
     return tree
 
-
 from anytree import LevelOrderIter
 from itertools import cycle
 
@@ -634,12 +631,10 @@ def get_headerpath_until(the_node, tree):
     
     return headerpath
 
-
 def get_chunk_txt(chunk_row: Union[dict, pd.Series], chunk_template:str="{p}: {o}") -> str:
     chunk_txt=chunk_template.format(**chunk_row)
     chunk_txt=re.sub(r'\n+', '; ', chunk_txt)
     return chunk_txt
-
 
 def get_header_prompt(node: Node, tree: Node, chunks_df: pd.DataFrame) -> str:
     
