@@ -36,7 +36,7 @@ def get_system_prompt(toc=None, rag=False, briefing_df=pd.DataFrame(), **kwargs)
     """
 
     prompt=""
-    prompt+="You are a knowledge-oriented AI assistant specialised in wild bee knowledge. "
+    prompt+="You are a knowledge-oriented AI assistant specialized in wild bee knowledge. "
     prompt+="Provide only factually accurate information. "
     prompt+="If you are uncertain about an answer, state that you do not know rather than guessing or making assumptions. "
     prompt=prompt.strip()
