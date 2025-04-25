@@ -15,7 +15,7 @@ class InjectionCallback(EvaluatorCallback):
         if _isinstance(rag_pipe, RAGPipeline):
             self.rag_pipe = rag_pipe
 
-        self.object_tag=self.evaluator.__class__.__name__.lower()[:3]+f":{self.evaluator.id}"
+        self.object_tag=self.evaluator.__class__.__name__.lower()[:3]+f"-{self.evaluator.id}"
         if hasattr(self, 'rag_pipe'):
             self.object_tag+='-rag'
         

@@ -288,9 +288,10 @@ class Taxomizer:
 
     def get_table_of_contents(self):
         if hasattr(self, 'llm_tree'):
-            return get_table_of_contents(self.llm_tree)
-        else:
-            return None
+            if isinstance(self.llm_tree, Node):
+                return get_table_of_contents(self.llm_tree)
+        
+        return None
 
     @property
     def toc(self):
